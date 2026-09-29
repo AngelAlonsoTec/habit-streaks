@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Habit Streaks",
+    "slug": "habit-streaks",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/ios-icon-dark.png",
+        "tinted": "./assets/ios-icon-tinted.png"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FF7A1A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.agpcr.habitstreaks"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF7A1A"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#F6F8FA",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0D1117"
+          }
+        }
+      ],
+      [
+        "./plugins/with-android-night-icon",
+        {
+          "source": "./assets/android-night"
+        }
+      ]
+    ],
+    "scheme": "habitstreaks",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
