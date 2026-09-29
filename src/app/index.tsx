@@ -1,0 +1,252 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { HabitActionsSheet } from '@/components/HabitActionsSheet';
+import { HabitCard } from '@/components/HabitCard';
+import { ProgressRing } from '@/components/ProgressRing';
+import { Chip } from '@/components/ui';
+import { WeekStrip } from '@/components/WeekStrip';
+import { DEFAULT_CATEGORIES } from '@/lib/categories';
+import { DateKey, fromKey, todayKey } from '@/lib/dates';
+import { Habit, isDoneFor, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
+import { useHabits } from '@/store/habits';
+import { IconName, useTheme } from '@/theme';
+
+const openNewHabit = () => router.push('/habit/new');
+
+function HeaderButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.headerButton, pressed && { backgroundColor: theme.surface }]}
+    >
+      <Ionicons name={icon} size={23} color={theme.text} />
+    </Pressable>
+  );
+}
+/** Espacio bajo la lista para que el botón flotante no tape la última tarjeta. */
+const FAB_SPACE = 104;
+
+function formatDay(key: DateKey): string {
+  const text = fromKey(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export default function TodayScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const allHabits = useHabits((s) => s.habits);
+  const completions = useHabits((s) => s.completions);
+  const customCategories = useHabits((s) => s.customCategories);
+  const showHeatmaps = useHabits((s) => s.settings.showHeatmaps);
+  const updateSettings = useHabits((s) => s.updateSettings);
+
+  const today = todayKey();
+  const [selectedDay, setSelectedDay] = useState<DateKey>(today);
+  const [category, setCategory] = useState<string | null>(null);
+  const [menuHabit, setMenuHabit] = useState<Habit | null>(null);
+
+  const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
+  const archivedCount = allHabits.length - habits.length;
+
+  const usedCategories = useMemo(() => {
+    const used = new Set(habits.flatMap((h) => h.categories));
+    return [...DEFAULT_CATEGORIES, ...customCategories].filter((c) => used.has(c.id));
+  }, [habits, customCategories]);
+  const activeCategory = category && usedCategories.some((c) => c.id === category) ? category : null;
+
+  const { sections, resting, doneCount, scheduledCount } = useMemo(() => {
+    const date = fromKey(selectedDay);
+    const done = (h: Habit) => isDoneFor(h, completions[h.id], date);
+    const visible = habits.filter((h) => !activeCategory || h.categories.includes(activeCategory));
+    const scheduled = visible.filter((h) => isScheduledOn(h, date));
+    return {
+      // Pendientes primero, completados al final de cada sección.
+      sections: TIME_OF_DAY_ORDER.map((tod) => ({
+        tod,
+        habits: scheduled.filter((h) => h.timeOfDay === tod).sort((a, b) => Number(done(a)) - Number(done(b))),
+      })).filter((s) => s.habits.length > 0),
+      resting: visible.filter((h) => !isScheduledOn(h, date)),
+      doneCount: scheduled.filter(done).length,
+      scheduledCount: scheduled.length,
+    };
+  }, [habits, activeCategory, completions, selectedDay]);
+
+  const progressFor = (d: Date) => {
+    const scheduled = habits.filter((h) => isScheduledOn(h, d));
+    if (!scheduled.length) return null;
+    return scheduled.filter((h) => isDoneFor(h, completions[h.id], d)).length / scheduled.length;
+  };
+
+  const progress = scheduledCount ? doneCount / scheduledCount : 0;
+  const isToday = selectedDay === today;
+  const pending = scheduledCount - doneCount;
+  const message =
+    scheduledCount === 0
+      ? 'Nada programado para este día'
+      : pending === 0
+        ? 'Día completado'
+        : `Te ${pending === 1 ? 'falta' : 'faltan'} ${pending} para completar el día`;
+
+  return (
+    <>
+      {/* Encabezado propio (no el nativo): en Android los botones del header nativo dejan de
+          responder mientras la barra anima el cambio de icono. */}
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+        <Text style={[styles.title, { color: theme.text }]}>{isToday ? 'Hoy' : 'Registro'}</Text>
+        <View style={styles.headerButtons}>
+          {archivedCount > 0 && (
+            <HeaderButton icon="archive-outline" label="Hábitos archivados" onPress={() => router.push('/archived')} />
+          )}
+          {habits.length > 0 && (
+            <HeaderButton icon="stats-chart-outline" label="Resumen" onPress={() => router.push('/summary')} />
+          )}
+          {habits.length > 0 && (
+            <HeaderButton
+              icon={showHeatmaps ? 'list-outline' : 'grid-outline'}
+              label={showHeatmaps ? 'Vista compacta' : 'Mostrar gráficas'}
+              onPress={() => updateSettings({ showHeatmaps: !showHeatmaps })}
+            />
+          )}
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FAB_SPACE }]}>
+        {habits.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="grid" size={56} color={theme.primary} />
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>Empieza tu primer hábito</Text>
+            <Text style={[styles.emptyText, { color: theme.muted }]}>
+              Elige una sugerencia o crea el tuyo. Cada día que lo cumplas se pintará un cuadrito.
+            </Text>
+            <Pressable onPress={openNewHabit} style={[styles.emptyButton, { backgroundColor: theme.primary }]}>
+              <Text style={styles.emptyButtonText}>Crear hábito</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <WeekStrip selected={selectedDay} onSelect={setSelectedDay} progressFor={progressFor} />
+
+            <View style={[styles.summary, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <ProgressRing size={62} strokeWidth={7} progress={progress} color={theme.primary} trackColor={theme.surface}>
+                <Text style={[styles.percent, { color: theme.text }]}>{Math.round(progress * 100)}%</Text>
+              </ProgressRing>
+              <View style={styles.summaryText}>
+                <Text style={[styles.date, { color: theme.muted }]}>{formatDay(selectedDay)}</Text>
+                <Text style={[styles.progressText, { color: theme.text }]}>
+                  {doneCount} de {scheduledCount} completados
+                </Text>
+                <Text style={[styles.message, { color: theme.muted }]}>{message}</Text>
+              </View>
+            </View>
+
+            {!isToday && (
+              <Pressable onPress={() => setSelectedDay(today)} style={[styles.backToday, { backgroundColor: theme.surface }]}>
+                <Ionicons name="return-down-back" size={16} color={theme.text} />
+                <Text style={[styles.backTodayText, { color: theme.text }]}>
+                  Estás editando un día pasado · Volver a hoy
+                </Text>
+              </Pressable>
+            )}
+
+            {usedCategories.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                <Chip label="Todos" selected={!activeCategory} onPress={() => setCategory(null)} />
+                {usedCategories.map((c) => (
+                  <Chip
+                    key={c.id}
+                    label={c.name}
+                    icon={c.icon}
+                    selected={activeCategory === c.id}
+                    onPress={() => setCategory(activeCategory === c.id ? null : c.id)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+
+            {sections.map((section) => (
+              <View key={section.tod} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name={TIME_OF_DAY[section.tod].icon} size={16} color={theme.muted} />
+                  <Text style={[styles.sectionTitle, { color: theme.muted }]}>{TIME_OF_DAY[section.tod].label}</Text>
+                </View>
+                {section.habits.map((h) => (
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} />
+                ))}
+              </View>
+            ))}
+
+            {resting.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="cafe-outline" size={16} color={theme.muted} />
+                  <Text style={[styles.sectionTitle, { color: theme.muted }]}>Descanso este día</Text>
+                </View>
+                {resting.map((h) => (
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={false} dimmed onLongPress={setMenuHabit} />
+                ))}
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {habits.length > 0 && (
+        <Pressable
+          onPress={openNewHabit}
+          accessibilityRole="button"
+          accessibilityLabel="Nuevo hábito"
+          style={({ pressed }) => [
+            styles.fab,
+            { backgroundColor: theme.primary, bottom: insets.bottom + 20, transform: [{ scale: pressed ? 0.94 : 1 }] },
+          ]}
+        >
+          <Ionicons name="add" size={30} color="#FFFFFF" />
+        </Pressable>
+      )}
+
+      <HabitActionsSheet habit={menuHabit} onClose={() => setMenuHabit(null)} />
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: 16, gap: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 4 },
+  title: { fontSize: 30, fontWeight: '800' },
+  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  summary: {
+    flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16,
+    borderRadius: 18, borderWidth: StyleSheet.hairlineWidth,
+  },
+  summaryText: { flex: 1, gap: 2 },
+  percent: { fontSize: 15, fontWeight: '800' },
+  date: { fontSize: 13 },
+  progressText: { fontSize: 18, fontWeight: '800' },
+  message: { fontSize: 13 },
+  backToday: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 10, borderRadius: 12,
+  },
+  backTodayText: { fontSize: 13, fontWeight: '600' },
+  chips: { gap: 8, paddingVertical: 2 },
+  section: { gap: 10, marginTop: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  empty: { alignItems: 'center', marginTop: 80, paddingHorizontal: 24, gap: 12 },
+  emptyTitle: { fontSize: 20, fontWeight: '700' },
+  emptyText: { fontSize: 15, textAlign: 'center', lineHeight: 21 },
+  emptyButton: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },
+  emptyButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  fab: {
+    position: 'absolute', right: 20, width: 60, height: 60, borderRadius: 30,
+    alignItems: 'center', justifyContent: 'center', boxShadow: '0px 6px 16px rgba(0, 0, 0, 0.25)',
+  },
+});
