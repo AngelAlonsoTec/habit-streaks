@@ -1,0 +1,167 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Habit Streaks" width="120" />
+</p>
+
+<h1 align="center">Habit Streaks</h1>
+
+<p align="center">
+  Registra tus hábitos día a día y mira cómo se llena tu gráfica al estilo GitHub.
+</p>
+
+---
+
+## Qué es
+
+**Habit Streaks** es una app móvil de hábitos para Android, iOS y web. Cada hábito tiene su propio *heatmap* tipo GitHub: cada cuadrito es un día y su color muestra cuánto lo cumpliste. Los datos se guardan en el teléfono (sin cuenta ni conexión), y el modelo está preparado para añadir sincronización en la nube más adelante.
+
+### Funciones
+
+- **Heatmap por hábito**: cuadrícula continua con una línea sutil entre meses e intensidad según el progreso del día.
+- **Metas flexibles**: una o varias veces al día (por ejemplo, 8 vasos de agua), días concretos de la semana o *N* veces por semana.
+- **Rachas inteligentes**: respetan los días de descanso del hábito; las metas semanales cuentan la racha en semanas.
+- **Pantalla Hoy**: los últimos 7 días para registrar días pasados, progreso del día, filtro por categoría y hábitos agrupados en mañana, tarde, noche o cualquier momento.
+- **Asistente de creación** en 4 pasos, con plantillas, 15 categorías predefinidas y categorías propias.
+- **Recordatorios** con una o varias horas que no avisan si ya cumpliste el hábito ese día.
+- **Detalle del hábito**: estadísticas, calendario mensual editable y gráfica de tus mejores días de la semana.
+- Archivar hábitos, menú con pulsación larga, vista compacta y modo claro/oscuro automático (incluido el icono de la app).
+
+## Tecnologías
+
+| Área | Tecnología |
+|---|---|
+| Framework | [Expo](https://expo.dev) SDK 57 · React Native 0.86 · React 19.2 |
+| Lenguaje | TypeScript 6 |
+| Navegación | Expo Router 57 (rutas por archivos en `src/app/`) |
+| Estado y datos | Zustand 5 + AsyncStorage (persistencia local con migraciones) |
+| Gráficos | react-native-svg (heatmaps y anillos de progreso) |
+| Nativo | expo-notifications, expo-haptics, expo-splash-screen, expo-system-ui |
+| Web | react-native-web |
+| Calidad | Jest 29 + jest-expo + Testing Library (React Native), ESLint 9 (eslint-config-expo) |
+| Iconos | Script propio con [sharp](https://sharp.pixelplumbing.com/) que genera todos los PNG desde un SVG |
+
+## Requisitos
+
+- **Node.js** en versión LTS (probado con Node 24) y **npm**.
+- **Git**.
+- Para probar en el teléfono: la app **Expo Go** ([Android](https://play.google.com/store/apps/details?id=host.exp.exponent) · [iOS](https://apps.apple.com/app/expo-go/id982107779)) en su versión para SDK 57, con el teléfono en la misma red Wi-Fi que el ordenador.
+
+## Instalación y uso por sistema operativo
+
+Los comandos de la app son los mismos en todos los sistemas; lo que cambia es cómo instalar las herramientas y qué emuladores puedes usar.
+
+### Windows
+
+1. Instala Node.js LTS y Git (por ejemplo, con `winget`):
+   ```powershell
+   winget install OpenJS.NodeJS.LTS
+   winget install Git.Git
+   ```
+2. Clona el proyecto e instala las dependencias:
+   ```powershell
+   git clone <URL-del-repositorio> habit-streaks
+   cd habit-streaks
+   npm install
+   ```
+3. Arranca el servidor de desarrollo:
+   ```powershell
+   npx expo start
+   ```
+   - **Android (teléfono)**: escanea el código QR con Expo Go.
+   - **Android (emulador)**: instala [Android Studio](https://developer.android.com/studio), crea un dispositivo virtual y pulsa `a` en la terminal.
+   - **Web**: pulsa `w`.
+   - **iOS**: solo en un iPhone físico con Expo Go (escanea el QR con la cámara). El simulador de iOS no está disponible en Windows.
+
+### macOS
+
+1. Instala Node.js LTS y Git (por ejemplo, con [Homebrew](https://brew.sh)):
+   ```bash
+   brew install node git
+   ```
+2. Clona el proyecto e instala las dependencias:
+   ```bash
+   git clone <URL-del-repositorio> habit-streaks
+   cd habit-streaks
+   npm install
+   ```
+3. Arranca el servidor de desarrollo:
+   ```bash
+   npx expo start
+   ```
+   - **iOS (simulador)**: instala Xcode desde la App Store, ábrelo una vez para aceptar la licencia y pulsa `i` en la terminal.
+   - **iOS / Android (teléfono)**: escanea el código QR con Expo Go (en iPhone, con la cámara).
+   - **Android (emulador)**: instala Android Studio, crea un dispositivo virtual y pulsa `a`.
+   - **Web**: pulsa `w`.
+
+### Linux
+
+1. Instala Node.js LTS y Git. Con [nvm](https://github.com/nvm-sh/nvm) (válido para cualquier distribución):
+   ```bash
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+   # Abre una terminal nueva y después:
+   nvm install --lts
+   sudo apt install git   # o el gestor de paquetes de tu distribución
+   ```
+2. Clona el proyecto e instala las dependencias:
+   ```bash
+   git clone <URL-del-repositorio> habit-streaks
+   cd habit-streaks
+   npm install
+   ```
+3. Arranca el servidor de desarrollo:
+   ```bash
+   npx expo start
+   ```
+   - **Android (teléfono)**: escanea el código QR con Expo Go.
+   - **Android (emulador)**: instala Android Studio (el emulador necesita KVM activado), crea un dispositivo virtual y pulsa `a`.
+   - **Web**: pulsa `w`.
+   - **iOS**: solo en un iPhone físico con Expo Go. El simulador de iOS no está disponible en Linux.
+
+> **Si el teléfono no conecta con el servidor** (redes con aislamiento de clientes, VPN, etc.), usa el modo túnel: `npx expo start --tunnel`.
+>
+> **Si ves errores raros tras actualizar el proyecto**, limpia la caché de Metro: `npx expo start -c`.
+
+## Scripts
+
+| Comando | Qué hace |
+|---|---|
+| `npm start` | Arranca el servidor de desarrollo de Expo |
+| `npm run android` / `npm run ios` / `npm run web` | Arranca y abre directamente en el emulador de Android, el simulador de iOS (solo macOS) o el navegador |
+| `npm test` | Ejecuta las pruebas (Jest) |
+| `npm run test:tz` | Ejecuta las pruebas en varias zonas horarias (México, Los Ángeles, Madrid, Tokio y Auckland) |
+| `npm run typecheck` | Comprueba los tipos de TypeScript |
+| `npm run lint` | Pasa ESLint |
+| `npm run icons` | Regenera todos los iconos de `assets/` desde el SVG de `scripts/generate-icons.js` |
+
+## Limitaciones de Expo Go
+
+Expo Go sirve para desarrollar rápido, pero no es la app final:
+
+- **Recordatorios**: no funcionan en Expo Go para Android, que no admite `expo-notifications` desde el SDK 53. La app lo detecta: los recordatorios se guardan y sonarán en la app instalada.
+- **Icono y pantalla de carga**: Expo Go muestra los suyos; los de Habit Streaks solo se ven en la app instalada.
+
+Para probar todo como en producción, genera la app con [EAS Build](https://docs.expo.dev/build/introduction/). Compila en la nube, así que funciona desde cualquier sistema operativo sin instalar Android Studio ni Xcode (necesitas una cuenta gratuita de Expo):
+
+```bash
+npx eas-cli@latest login
+npx eas-cli@latest build --platform android --profile preview      # APK para instalar en tu teléfono
+npx eas-cli@latest build --platform android --profile production   # AAB para publicar en Google Play
+```
+
+Los perfiles están definidos en `eas.json`.
+
+## Estructura del proyecto
+
+```
+src/
+├── app/            Pantallas (Expo Router): Hoy, detalle, crear/editar, archivados
+├── components/     Heatmap, tarjetas, asistente de creación, calendario, etc.
+├── lib/            Lógica pura: fechas, reglas de hábitos, estadísticas, recordatorios
+├── store/          Estado global y persistencia (Zustand + AsyncStorage)
+├── theme/          Colores, modo claro/oscuro, iconos y paleta de hábitos
+└── testing/        Datos de ejemplo para las pruebas
+plugins/            Config plugin de Expo (icono oscuro de Android)
+scripts/            Generador de iconos
+assets/             Iconos, pantalla de carga y favicon
+```
+
+Las carpetas nativas `android/` e `ios/` no se versionan: Expo las genera a partir de `app.json` y de los config plugins (`npx expo prebuild`).
