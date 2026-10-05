@@ -200,10 +200,10 @@ describe('datos y rendimiento', () => {
     }));
     await useHabits.persist.rehydrate();
     const [habit] = useHabits.getState().habits;
-    expect(habit).toMatchObject({ kind: 'build', unit: null, goal: { period: 'day', count: 1 }, archived: false, objectives: [] });
+    expect(habit).toMatchObject({ kind: 'build', unit: null, goal: { period: 'day', count: 1 }, objectives: [] });
     expect(computeStats(habit, useHabits.getState().completions.old, at(2026, 10, 5))).toMatchObject({ currentStreak: 2 });
     useHabits.getState().setCompletion('old', '2026-10-05', 1);
-    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('myhabits-store'))!).version).toBe(6));
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('myhabits-store'))!).version).toBe(7));
   });
 
   it('cambiar un hábito de veces a cantidad al editarlo conserva el historial', () => {
@@ -321,12 +321,9 @@ describe('objetivos en la vida real', () => {
     expect(useHabits.getState().habits[0].objectives.map((o) => [o.title, o.achievedOn])).toEqual([['A1', '2026-09-20'], ['A2', null]]);
   });
 
-  it('archivar y restaurar conserva los objetivos; borrar el hábito se los lleva', () => {
+  it('borrar el hábito se lleva sus objetivos y no toca a los demás', () => {
     seed({ name: 'Inglés', objectives: [objective('A1'), objective('A2')] }, { name: 'Correr' });
     const s = () => useHabits.getState();
-    s().setArchived('h1', true);
-    s().setArchived('h1', false);
-    expect(s().habits[0].objectives).toHaveLength(2);
     s().deleteHabit('h1');
     expect(s().habits.map((h) => h.name)).toEqual(['Correr']);
   });
@@ -393,6 +390,29 @@ describe('objetivos en la vida real', () => {
     expect(useHabits.getState().habits[0].objectives).toEqual([]);
     renderRouter(APP_DIR, { initialUrl: '/habit/v4' });
     expect(await screen.findByText(/márcate hitos/)).toBeTruthy();
+  });
+
+  it('quien tenía hábitos archivados actualiza: vuelven a Hoy con todo su historial', async () => {
+    await AsyncStorage.setItem('myhabits-store', JSON.stringify({
+      version: 6,
+      state: {
+        habits: [
+          { ...makeHabit({ id: 'old', name: 'Piano' }), archived: true, archivedAt: '2026-08-20' },
+          { ...makeHabit({ id: 'cur', name: 'Leer' }), archived: false, archivedAt: null },
+        ],
+        completions: { old: { '2026-08-19': 1, '2026-08-20': 1 } },
+        customCategories: [],
+        settings: { showHeatmaps: true, compactTipSeen: true },
+      },
+    }));
+    await useHabits.persist.rehydrate();
+    const habits = useHabits.getState().habits;
+    expect(habits.map((h) => h.name)).toEqual(['Piano', 'Leer']);
+    expect(habits.every((h) => !('archived' in h) && !('archivedAt' in h))).toBe(true);
+    expect(useHabits.getState().completions.old).toEqual({ '2026-08-19': 1, '2026-08-20': 1 });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('Piano')).toBeTruthy();
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('myhabits-store'))!).version).toBe(7));
   });
 });
 

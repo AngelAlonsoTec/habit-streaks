@@ -26,7 +26,7 @@
 - **Asistente de creación** en 4 pasos, con plantillas, 15 categorías predefinidas y categorías propias.
 - **Recordatorios** con una o varias horas que no avisan si ya cumpliste el hábito ese día.
 - **Detalle del hábito**: estadísticas, calendario mensual editable y gráfica de tus mejores días de la semana.
-- Archivar hábitos, menú con pulsación larga, vista compacta y modo claro/oscuro automático (incluido el icono de la app).
+- Menú con pulsación larga, vista compacta y modo claro/oscuro automático (incluido el icono de la app).
 
 ## Tecnologías
 
@@ -156,7 +156,7 @@ Los perfiles están definidos en `eas.json`.
 
 ```
 src/
-├── app/            Pantallas (Expo Router): Hoy, detalle, crear/editar, archivados
+├── app/            Pantallas (Expo Router): Hoy, detalle, crear/editar, resumen
 ├── components/     Heatmap, tarjetas, asistente de creación, calendario, etc.
 ├── lib/            Lógica pura: fechas, reglas de hábitos, estadísticas, recordatorios
 ├── store/          Estado global y persistencia (Zustand + AsyncStorage)

@@ -264,12 +264,17 @@ describe('flujos de la app', () => {
     expect(await screen.findByText(String(today.getFullYear() - 1))).toBeTruthy();
   });
 
-  it('el menú permite archivar', async () => {
+  it('el menú solo ofrece editar, ver estadísticas o eliminar (ya no se archiva)', async () => {
     seed({ name: 'Leer' }, { name: 'Correr' });
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons?: AlertButton[]) => buttons?.[1].onPress?.());
     renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(screen.queryByLabelText('Hábitos archivados')).toBeNull();
     fireEvent(await screen.findByText('Correr'), 'longPress');
-    fireEvent.press(await screen.findByText('Archivar'));
-    expect(useHabits.getState().habits.find((h) => h.name === 'Correr')?.archived).toBe(true);
+    expect(await screen.findByText('Ver estadísticas')).toBeTruthy();
+    expect(screen.queryByText('Archivar')).toBeNull();
+    fireEvent.press(screen.getByText('Eliminar'));
+    await waitFor(() => expect(useHabits.getState().habits.map((h) => h.name)).toEqual(['Leer']));
+    jest.restoreAllMocks();
   });
 
   it('agrupa por momento del día, separa los días de descanso y filtra por categoría', async () => {
@@ -301,7 +306,7 @@ describe('flujos de la app', () => {
     expect(useHabits.getState().completions.h1).toEqual({ [yesterday]: 1 });
   });
 
-  it('detalle: estadísticas, calendario y archivar', async () => {
+  it('detalle: estadísticas, calendario y eliminar', async () => {
     seed({ name: 'Leer' });
     renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
     expect(await screen.findByText('Racha actual')).toBeTruthy();
@@ -318,13 +323,13 @@ describe('flujos de la app', () => {
     fireEvent.press(screen.getByText('Guardar cambios'));
     await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
 
-    fireEvent.press(await screen.findByText('Archivar'));
+    expect(screen.queryByText('Archivar')).toBeNull();
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons?: AlertButton[]) => buttons?.[1].onPress?.());
+    fireEvent.press(await screen.findByText('Eliminar'));
     await waitFor(() => expect(screen).toHavePathname('/'));
-    expect(useHabits.getState().habits[0].archived).toBe(true);
+    expect(useHabits.getState().habits).toEqual([]);
     expect(await screen.findByText('Empieza tu primer hábito')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Hábitos archivados'));
-    fireEvent.press(await screen.findByLabelText('Restaurar Leer'));
-    expect(useHabits.getState().habits[0].archived).toBe(false);
+    jest.restoreAllMocks();
   });
 
   it('editar conserva el historial', async () => {
@@ -470,17 +475,6 @@ describe('flujos de la app', () => {
     await waitFor(() => expect(headerTitled()).toBe(false));
   });
 
-  it('archivados: la fila abre el detalle, que avisa de que está archivado', async () => {
-    seed({ name: 'Piano', archived: true });
-    useHabits.getState().setCompletion('h1', '2026-01-01', 1);
-    renderRouter(APP_DIR, { initialUrl: '/archived' });
-    expect(await screen.findByText(/^Todos los días · mejor racha: 1 día$/)).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Ver Piano'));
-    await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
-    expect(await screen.findByText(/^Archivado:/)).toBeTruthy();
-    expect(screen.getByText('Restaurar')).toBeTruthy();
-  });
-
   it('al completar un hábito su gráfica se pliega; los pendientes y los de dejar la mantienen', async () => {
     seed({ name: 'Leer' }, { name: 'Agua', goal: { period: 'day', count: 8 } }, { name: 'Fumar', kind: 'quit', goal: { period: 'day', count: 0 } });
     renderRouter(APP_DIR, { initialUrl: '/' });
@@ -523,15 +517,6 @@ describe('flujos de la app', () => {
     useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
     fireEvent.press(await screen.findByLabelText('Vista compacta'));
     await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: false, compactTipSeen: true }));
-  });
-
-  it('detalle de un archivado: fecha de archivo y racha congelada', async () => {
-    seed({ name: 'Piano', archived: true, archivedAt: '2026-08-20', createdAt: new Date(2026, 7, 1).toISOString() });
-    useHabits.setState({ completions: { h1: { '2026-08-18': 1, '2026-08-19': 1, '2026-08-20': 1 } } });
-    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
-    expect(await screen.findByText('Racha al archivar')).toBeTruthy();
-    expect(screen.getByText(/^Archivado el 20 ago/)).toBeTruthy();
-    expect(screen.getAllByText('3 días').length).toBe(2); // racha al archivar y mejor racha
   });
 
   it('una URL de hábito inexistente no rompe la app', async () => {

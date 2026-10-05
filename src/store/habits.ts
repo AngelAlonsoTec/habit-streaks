@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { Category } from '@/lib/categories';
-import { DateKey, todayKey, toKey } from '@/lib/dates';
+import type { DateKey } from '@/lib/dates';
 import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, MAX_AMOUNT, roundAmount, sortTimes } from '@/lib/habit';
 import { MAX_OBJECTIVE_LENGTH, Objective, ObjectiveInput } from '@/lib/objectives';
 
@@ -25,7 +25,6 @@ type HabitsState = {
   hasHydrated: boolean;
   addHabit: (input: HabitInput) => string;
   updateHabit: (id: string, input: Partial<HabitInput>) => void;
-  setArchived: (id: string, archived: boolean) => void;
   deleteHabit: (id: string) => void;
   /** Suma una vez; al pasar la meta diaria vuelve a 0 (así un toque siempre hace algo). */
   cycleCompletion: (id: string, day: DateKey) => void;
@@ -78,9 +77,7 @@ export const useHabits = create<HabitsState>()(
 
       addHabit: (input) => {
         const now = new Date().toISOString();
-        const habit: Habit = {
-          ...normalize(input), id: randomUUID(), objectives: [], archived: false, archivedAt: null, createdAt: now, updatedAt: now,
-        };
+        const habit: Habit = { ...normalize(input), id: randomUUID(), objectives: [], createdAt: now, updatedAt: now };
         set((s) => ({ habits: [...s.habits, habit] }));
         return habit.id;
       },
@@ -89,13 +86,6 @@ export const useHabits = create<HabitsState>()(
         set((s) => ({
           habits: s.habits.map((h) =>
             h.id === id ? { ...h, ...normalize({ ...h, ...input }), updatedAt: new Date().toISOString() } : h,
-          ),
-        })),
-
-      setArchived: (id, archived) =>
-        set((s) => ({
-          habits: s.habits.map((h) =>
-            h.id === id ? { ...h, archived, archivedAt: archived ? todayKey() : null, updatedAt: new Date().toISOString() } : h,
           ),
         })),
 
@@ -181,7 +171,7 @@ export const useHabits = create<HabitsState>()(
     {
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
-      version: 6,
+      version: 7,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
@@ -214,7 +204,6 @@ export function migrate(persisted: PersistedAny, version: number) {
         goal: { period: 'day', count: 1 },
         days: ALL_DAYS,
         reminders: [],
-        archived: false,
         ...rest,
       };
     });
@@ -240,12 +229,15 @@ export function migrate(persisted: PersistedAny, version: number) {
     state.habits = (state.habits ?? []).map((h) => ({ objectives: [], ...h }));
   }
   if (version < 6) {
-    // v6: fecha de archivo. Para los ya archivados, la última modificación es la mejor pista.
-    state.habits = (state.habits ?? []).map((h) => ({
-      archivedAt: h.archived && typeof h.updatedAt === 'string' ? toKey(new Date(h.updatedAt)) : null,
-      ...h,
-    }));
+    // v6: consejo de la vista compacta, aún sin ver.
     state.settings = { showHeatmaps: true, ...state.settings, compactTipSeen: false };
+  }
+  if (version < 7) {
+    // v7: ya no se archiva. Los archivados no se borran: vuelven a Hoy y se decide si eliminarlos.
+    state.habits = (state.habits ?? []).map((h) => {
+      const { archived: _archived, archivedAt: _archivedAt, ...rest } = h;
+      return rest;
+    });
   }
   return state as unknown as Pick<HabitsState, 'habits' | 'completions' | 'customCategories' | 'settings'>;
 }

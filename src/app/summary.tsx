@@ -36,13 +36,12 @@ const WEEKDAY_NAMES = ['lunes', 'martes', 'miÃ©rcoles', 'jueves', 'viernes', 'sÃ
 export default function SummaryScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const allHabits = useHabits((s) => s.habits);
+  const habits = useHabits((s) => s.habits);
   const completions = useHabits((s) => s.completions);
   const [period, setPeriod] = useState<Period>('week');
   const [offset, setOffset] = useState(0);
   const heatmapScroll = useRef<ScrollView>(null);
 
-  const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
   const todayKey = useToday();
   const today = useMemo(() => fromKey(todayKey), [todayKey]);
   const summary = useMemo(

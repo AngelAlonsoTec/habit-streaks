@@ -52,12 +52,10 @@ describe('planReminders', () => {
     expect(planReminders([weekly], { h1: { '2026-09-22': 45 } }, NOW)[0].body).toBe('Esta semana llevas 45 de 150 min.');
   });
 
-  it('ignora archivados y respeta el máximo de 60, en orden', () => {
+  it('respeta el máximo de 60, en orden', () => {
     const many = Array.from({ length: 12 }, (_, i) => makeHabit({ id: `h${i}`, reminders: ['07:00', '12:00', '19:00'] }));
-    const archived = makeHabit({ id: 'arch', reminders: ['16:00'], archived: true });
-    const plan = planReminders([...many, archived], {}, NOW);
+    const plan = planReminders(many, {}, NOW);
     expect(plan).toHaveLength(60);
-    expect(plan.some((r) => r.habitId === 'arch')).toBe(false);
     const times = plan.map((r) => r.date.getTime());
     expect(times).toEqual([...times].sort((a, b) => a - b));
   });

@@ -47,7 +47,7 @@ function fullDate(key: DateKey): string {
 export default function TodayScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const allHabits = useHabits((s) => s.habits);
+  const habits = useHabits((s) => s.habits);
   const completions = useHabits((s) => s.completions);
   const customCategories = useHabits((s) => s.customCategories);
   const showHeatmaps = useHabits((s) => s.settings.showHeatmaps);
@@ -64,8 +64,6 @@ export default function TodayScreen() {
   const [recordTarget, setRecordTarget] = useState<{ habit: Habit; day: DateKey } | null>(null);
   const openRecord = useCallback((habit: Habit, day: DateKey) => setRecordTarget({ habit, day }), []);
 
-  const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
-  const archivedCount = allHabits.length - habits.length;
 
   const usedCategories = useMemo(() => {
     const used = new Set(habits.flatMap((h) => h.categories));
@@ -123,9 +121,6 @@ export default function TodayScreen() {
           {formatDayTitle(selectedDay, today)}
         </Text>
         <View style={styles.headerButtons}>
-          {archivedCount > 0 && (
-            <HeaderButton icon="archive-outline" label="Hábitos archivados" onPress={() => router.push('/archived')} />
-          )}
           {habits.length > 0 && (
             <HeaderButton icon="stats-chart-outline" label="Resumen" onPress={() => router.push('/summary')} />
           )}

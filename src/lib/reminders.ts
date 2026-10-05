@@ -22,7 +22,7 @@ export function planReminders(habits: Habit[], completions: Completions, now = n
   const today = startOfDay(now);
   const planned: PlannedReminder[] = [];
   for (const habit of habits) {
-    if (habit.archived || habit.reminders.length === 0) continue;
+    if (habit.reminders.length === 0) continue;
     const days = completions[habit.id];
     for (let d = 0; d < DAYS_AHEAD; d++) {
       const day = addDays(today, d);

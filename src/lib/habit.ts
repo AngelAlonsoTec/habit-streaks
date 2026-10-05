@@ -31,9 +31,6 @@ export type Habit = {
   reminders: string[];
   /** Hitos opcionales a largo plazo ("Alcanzar el A1"), en el orden en que se quieren lograr. */
   objectives: Objective[];
-  archived: boolean;
-  /** Día en que se archivó (null si no está archivado): sus estadísticas se quedan como estaban ese día. */
-  archivedAt: DateKey | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,16 +54,6 @@ export function isQuantity(habit: Pick<Habit, 'unit'>): boolean {
 
 export function isQuit(habit: Pick<Habit, 'kind'>): boolean {
   return habit.kind === 'quit';
-}
-
-/**
- * Último día que se siguió un hábito archivado: el día en que se archivó o, si después se le
- * registró algo desde su calendario, ese último registro. null si no está archivado.
- */
-export function trackedUntil(habit: Pick<Habit, 'archivedAt'>, days: Record<DateKey, number> | undefined): DateKey | null {
-  if (!habit.archivedAt) return null;
-  const last = Object.keys(days ?? {}).filter((k) => (days?.[k] ?? 0) > 0).sort().at(-1);
-  return last && last > habit.archivedAt ? last : habit.archivedAt;
 }
 
 /** Primer día desde el que cuenta un hábito: su creación o su primer registro, lo que sea antes. */
@@ -133,15 +120,12 @@ export function dayLevel(habit: GoalHabit, count: number, date: Date, start: Dat
  * semana que se pasó también salen como superados.
  */
 export function quitLevel(
-  habit: GoalHabit & Pick<Habit, 'createdAt' | 'archivedAt'>,
+  habit: GoalHabit & Pick<Habit, 'createdAt'>,
   days: Record<DateKey, number> | undefined,
 ): ((date: Date, count: number) => number) | undefined {
   if (!isQuit(habit)) return undefined;
   const start = habitStart(habit, days);
-  const until = trackedUntil(habit, days);
   return (date, count) => {
-    // Archivado: lo posterior no se sigue (no son días limpios, simplemente no se registraban).
-    if (until && toKey(date) > until) return 0;
     if (habit.goal.period === 'week' && count > 0 && weekCount(days, date) > habit.goal.count) return -1;
     return dayLevel(habit, count, date, start);
   };

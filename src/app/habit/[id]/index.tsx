@@ -11,7 +11,7 @@ import { RecordSheet } from '@/components/RecordSheet';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey, formatShortDate, fromKey } from '@/lib/dates';
+import { DateKey, fromKey } from '@/lib/dates';
 import {
   dailyTarget, describeGoal, formatCompact, formatQuantity, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
 } from '@/lib/habit';
@@ -33,7 +33,6 @@ export default function HabitDetailScreen() {
   const customCategories = useHabits((s) => s.customCategories);
   const cycleCompletion = useHabits((s) => s.cycleCompletion);
   const setCompletion = useHabits((s) => s.setCompletion);
-  const setArchived = useHabits((s) => s.setArchived);
   const deleteHabit = useHabits((s) => s.deleteHabit);
   const heatmapScroll = useRef<ScrollView>(null);
   const [recordDay, setRecordDay] = useState<DateKey | null>(null);
@@ -65,11 +64,6 @@ export default function HabitDetailScreen() {
 
   const onEdit = () => router.push({ pathname: '/habit/[id]/edit', params: { id: habit.id } });
 
-  const onArchive = () => {
-    setArchived(habit.id, !habit.archived);
-    goBack();
-  };
-
   const onDelete = async () => {
     const ok = await confirmAction('Eliminar hábito', `Se borrará "${habit.name}" y todo su historial.`, 'Eliminar');
     if (!ok) return;
@@ -79,7 +73,7 @@ export default function HabitDetailScreen() {
 
   const statItems = [
     {
-      label: habit.archived ? 'Racha al archivar' : 'Racha actual',
+      label: 'Racha actual',
       value: streakLabel(stats.currentStreak, stats.streakUnit),
       icon: 'flame' as const,
     },
@@ -138,16 +132,6 @@ export default function HabitDetailScreen() {
             )}
           </View>
         </View>
-
-        {habit.archived && (
-          <View style={[styles.archived, { backgroundColor: theme.surface }]}>
-            <Ionicons name="archive-outline" size={18} color={theme.muted} />
-            <Text style={[styles.archivedText, { color: theme.muted }]}>
-              {habit.archivedAt ? `Archivado el ${formatShortDate(habit.archivedAt, today)}` : 'Archivado'}: no aparece en Hoy
-              ni envía recordatorios. Sus estadísticas se quedan como la última vez que lo seguiste.
-            </Text>
-          </View>
-        )}
 
         {categories.length > 0 && (
           <View style={styles.wrap}>
@@ -230,12 +214,8 @@ export default function HabitDetailScreen() {
           />
         </Card>
 
-        {/* Editar está en la cabecera; aquí quedan las acciones que sacan el hábito de Hoy. */}
+        {/* Editar está en la cabecera; aquí abajo, eliminar. */}
         <View style={styles.actions}>
-          <Pressable onPress={onArchive} style={[styles.action, { backgroundColor: theme.surface }]}>
-            <Ionicons name={habit.archived ? 'arrow-undo-outline' : 'archive-outline'} size={18} color={theme.text} />
-            <Text style={[styles.actionText, { color: theme.text }]}>{habit.archived ? 'Restaurar' : 'Archivar'}</Text>
-          </Pressable>
           <Pressable onPress={onDelete} style={[styles.action, { backgroundColor: theme.surface }]}>
             <Ionicons name="trash-outline" size={18} color={theme.danger} />
             <Text style={[styles.actionText, { color: theme.danger }]}>Eliminar</Text>
@@ -254,8 +234,6 @@ const styles = StyleSheet.create({
   heroText: { flex: 1, gap: 3 },
   heroName: { fontSize: 24, fontWeight: '800' },
   heroMeta: { fontSize: 14 },
-  archived: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14 },
-  archivedText: { flex: 1, fontSize: 13, lineHeight: 18 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

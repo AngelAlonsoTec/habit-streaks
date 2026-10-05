@@ -66,7 +66,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
     <Pressable
       onPress={() => router.push({ pathname: '/habit/[id]', params: { id: habit.id } })}
       onLongPress={onLongPress ? () => { tapFeedback(); onLongPress(habit); } : undefined}
-      accessibilityHint="Mantén pulsado para editar, archivar o eliminar"
+      accessibilityHint="Mantén pulsado para editar o eliminar"
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: theme.card, borderColor: theme.border, opacity: dimmed ? 0.6 : pressed ? 0.85 : 1 },

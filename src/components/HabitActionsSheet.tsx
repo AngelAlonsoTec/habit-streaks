@@ -17,7 +17,6 @@ type Props = {
 export function HabitActionsSheet({ habit, onClose }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const setArchived = useHabits((s) => s.setArchived);
   const deleteHabit = useHabits((s) => s.deleteHabit);
 
   if (!habit) return null;
@@ -25,7 +24,6 @@ export function HabitActionsSheet({ habit, onClose }: Props) {
   const actions: { label: string; icon: IconName; danger?: boolean; run: () => void | Promise<void> }[] = [
     { label: 'Editar', icon: 'create-outline', run: () => router.push({ pathname: '/habit/[id]/edit', params: { id: habit.id } }) },
     { label: 'Ver estadísticas', icon: 'stats-chart-outline', run: () => router.push({ pathname: '/habit/[id]', params: { id: habit.id } }) },
-    { label: 'Archivar', icon: 'archive-outline', run: () => setArchived(habit.id, true) },
     {
       label: 'Eliminar',
       icon: 'trash-outline',

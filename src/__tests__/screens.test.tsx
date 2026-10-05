@@ -105,29 +105,7 @@ describe('menú de la tarjeta', () => {
     fireEvent(await screen.findByText('Leer'), 'longPress');
     fireEvent.press(await screen.findByLabelText('Cerrar menú'));
     await waitFor(() => expect(screen.queryByText('Ver estadísticas')).toBeNull());
-    expect(useHabits.getState().habits[0].archived).toBe(false);
-  });
-});
-
-describe('archivados', () => {
-  it('eliminar desde archivados pide confirmación', async () => {
-    seed({ name: 'Leer', archived: true }, { name: 'Correr' });
-    answerAlert(true);
-    renderRouter(APP_DIR, { initialUrl: '/archived' });
-    fireEvent.press(await screen.findByLabelText('Eliminar Leer'));
-    await waitFor(() => expect(useHabits.getState().habits.map((h) => h.name)).toEqual(['Correr']));
-  });
-
-  it('sin archivados muestra un aviso', async () => {
-    renderRouter(APP_DIR, { initialUrl: '/archived' });
-    expect(await screen.findByText('No tienes hábitos archivados.')).toBeTruthy();
-  });
-
-  it('el botón de archivados solo aparece si hay alguno', async () => {
-    seed({ name: 'Leer' });
-    renderRouter(APP_DIR, { initialUrl: '/' });
-    await screen.findByText('Leer');
-    expect(screen.queryByLabelText('Hábitos archivados')).toBeNull();
+    expect(useHabits.getState().habits).toHaveLength(1);
   });
 });
 
