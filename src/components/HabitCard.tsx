@@ -10,6 +10,7 @@ import {
   dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isQuit, isScheduledOn, quitLevel, weekCount,
 } from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
+import { describeDueShort, nextObjective } from '@/lib/objectives';
 import { computeStats, streakLabel } from '@/lib/stats';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
@@ -57,6 +58,8 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
         ? `${Math.min(count, target)}/${target}${when}`
         : describeGoal(habit);
   const reminder = habit.reminders[0];
+  const next = nextObjective(habit.objectives);
+  const due = next?.dueDate ? describeDueShort(next.dueDate, today) : null;
 
   return (
     <Pressable
@@ -98,6 +101,15 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
               </View>
             )}
           </View>
+          {next && (
+            <View style={styles.inline}>
+              <Ionicons name="flag" size={12} color={habit.color} />
+              <Text style={[styles.metaText, styles.flex, { color: theme.muted }]} numberOfLines={1}>
+                Próximo: <Text style={{ color: theme.text }}>{next.title}</Text>
+                {due && <Text style={{ color: due.tone === 'overdue' ? theme.danger : theme.muted }}> · {due.text}</Text>}
+              </Text>
+            </View>
+          )}
         </View>
         {quit ? (
           <QuitButton
@@ -154,5 +166,6 @@ const styles = StyleSheet.create({
   meta: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 2, alignItems: 'center' },
   metaText: { fontSize: 12.5, fontWeight: '500' },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  flex: { flex: 1 },
   hidden: { display: 'none' },
 });

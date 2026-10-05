@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Heatmap, HeatmapLegend, monthStart, WeekdayLabels } from '@/components/Heatmap';
 import { MonthCalendar } from '@/components/MonthCalendar';
+import { ObjectivesCard } from '@/components/ObjectivesCard';
 import { RecordSheet } from '@/components/RecordSheet';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
@@ -139,6 +140,8 @@ export default function HabitDetailScreen() {
             </View>
           ))}
         </View>
+
+        <ObjectivesCard habit={habit} />
 
         <Card style={styles.cardGap}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>Últimos 12 meses</Text>

@@ -7,6 +7,12 @@ export function tapFeedback() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 }
 
+/** Vibración de "logrado", más marcada que la de un toque (al cumplir un objetivo). */
+export function successFeedback() {
+  if (Platform.OS === 'web') return;
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+}
+
 /** Confirmación que funciona también en web (Alert.alert no tiene botones allí). */
 export function confirmAction(title: string, message: string, confirmText: string): Promise<boolean> {
   if (Platform.OS === 'web') {

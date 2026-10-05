@@ -81,6 +81,16 @@ describe('summarize', () => {
     expect(slipped.perfectDays).toBe(3);
   });
 
+  it('lista los objetivos logrados dentro del periodo, del más reciente al más antiguo', () => {
+    const objective = (title: string, achievedOn: string | null) => ({ id: title, title, dueDate: null, achievedOn, createdAt: '' });
+    const english = makeHabit({
+      id: 'en', name: 'Inglés',
+      objectives: [objective('A1', '2026-09-22'), objective('A2', '2026-09-24'), objective('B1', '2026-09-14'), objective('B2', null)],
+    });
+    const s = summarize([english], {}, 'week', 0, NOW);
+    expect(s.objectivesAchieved.map((o) => o.title)).toEqual(['A2', 'A1']);
+  });
+
   it('las cantidades no inflan las veces: un día con registro cuenta una vez', () => {
     const steps = makeHabit({ id: 'steps', name: 'Caminar', unit: 'pasos', goal: { period: 'day', count: 10000 } });
     const s = summarize([steps], { steps: { '2026-09-21': 12000, '2026-09-22': 4000 } }, 'week', 0, NOW);

@@ -1,5 +1,6 @@
 import type { IconName } from '@/theme';
 import { addDays, DateKey, fromKey, startOfDay, startOfWeek, toKey, weekdayIndex } from './dates';
+import type { Objective } from './objectives';
 
 export type TimeOfDay = 'anytime' | 'morning' | 'afternoon' | 'evening';
 
@@ -28,6 +29,8 @@ export type Habit = {
   days: number[];
   /** Horas de recordatorio en formato HH:MM, ordenadas. */
   reminders: string[];
+  /** Hitos opcionales a largo plazo ("Alcanzar el A1"), en el orden en que se quieren lograr. */
+  objectives: Objective[];
   archived: boolean;
   createdAt: string;
   updatedAt: string;

@@ -84,11 +84,11 @@ describe('store de hábitos', () => {
     expect(s().customCategories).toHaveLength(1);
   });
 
-  it('persiste en AsyncStorage (versión 4)', async () => {
+  it('persiste en AsyncStorage (versión 5)', async () => {
     const id = s().addHabit(input);
     s().setCompletion(id, '2026-09-25', 1);
     const saved = JSON.parse((await AsyncStorage.getItem('myhabits-store'))!);
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(5);
     expect(saved.state.completions[id]).toEqual({ '2026-09-25': 1 });
     expect(saved.state).not.toHaveProperty('hasHydrated');
   });
@@ -104,6 +104,7 @@ describe('migración desde la versión 1', () => {
     expect(v2.habits[0]).toEqual({
       id: 'a', name: 'Leer', icon: 'book', color: '#3B82F6', createdAt: 'c', updatedAt: 'u',
       categories: [], timeOfDay: 'anytime', kind: 'build', goal: { period: 'day', count: 1 }, unit: null, days: ALL_DAYS, reminders: [], archived: false,
+      objectives: [],
     });
     expect(v2.completions).toEqual({ a: { '2026-09-24': 1, '2026-09-25': 1 } });
     expect(v2.settings).toEqual({ showHeatmaps: true });
@@ -114,7 +115,7 @@ describe('migración desde la versión 2', () => {
   it('los hábitos existentes pasan a contarse por veces', () => {
     const v2 = { habits: [{ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 } }], completions: { a: { '2026-09-25': 3 } } };
     const v3 = migrate(v2, 2);
-    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null, kind: 'build' });
+    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null, kind: 'build', objectives: [] });
     expect(v3.completions).toEqual(v2.completions);
   });
 });
@@ -122,7 +123,59 @@ describe('migración desde la versión 2', () => {
 describe('migración desde la versión 3', () => {
   it('los hábitos existentes pasan a ser para generar', () => {
     const v3 = { habits: [{ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 } }], completions: {} };
-    expect(migrate(v3, 3).habits[0]).toEqual({ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 }, kind: 'build' });
+    expect(migrate(v3, 3).habits[0]).toEqual({ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 }, kind: 'build', objectives: [] });
+  });
+});
+
+describe('store · objetivos', () => {
+  it('añade al final, recorta el título y no crea objetivos vacíos', () => {
+    const id = s().addHabit(input);
+    expect(s().addObjective(id, { title: '   ', dueDate: null })).toBeNull();
+    s().addObjective(id, { title: '  Alcanzar el A1 ', dueDate: '2027-01-05' });
+    s().addObjective(id, { title: 'Alcanzar el A2', dueDate: null });
+    expect(s().habits[0].objectives.map((o) => [o.title, o.dueDate, o.achievedOn])).toEqual([
+      ['Alcanzar el A1', '2027-01-05', null],
+      ['Alcanzar el A2', null, null],
+    ]);
+  });
+
+  it('editar: un título vacío conserva el anterior y se puede quitar la fecha', () => {
+    const id = s().addHabit(input);
+    const o = s().addObjective(id, { title: 'A1', dueDate: '2027-01-05' })!;
+    s().updateObjective(id, o, { title: '  ', dueDate: null });
+    expect(s().habits[0].objectives[0]).toMatchObject({ title: 'A1', dueDate: null });
+  });
+
+  it('marcar logrado y volver a pendiente', () => {
+    const id = s().addHabit(input);
+    const o = s().addObjective(id, { title: 'A1', dueDate: null })!;
+    s().setObjectiveAchieved(id, o, '2026-10-05');
+    expect(s().habits[0].objectives[0].achievedOn).toBe('2026-10-05');
+    s().setObjectiveAchieved(id, o, null);
+    expect(s().habits[0].objectives[0].achievedOn).toBeNull();
+  });
+
+  it('reordenar sin salirse de la lista y borrar', () => {
+    const id = s().addHabit(input);
+    const [a, b, c] = ['A1', 'A2', 'B1'].map((t) => s().addObjective(id, { title: t, dueDate: null })!);
+    s().moveObjective(id, c, -1);
+    s().moveObjective(id, a, -1); // ya es el primero: no cambia
+    expect(s().habits[0].objectives.map((o) => o.title)).toEqual(['A1', 'B1', 'A2']);
+    s().deleteObjective(id, b);
+    expect(s().habits[0].objectives.map((o) => o.title)).toEqual(['A1', 'B1']);
+  });
+
+  it('editar el hábito no toca sus objetivos', () => {
+    const id = s().addHabit(input);
+    s().addObjective(id, { title: 'A1', dueDate: null });
+    s().updateHabit(id, { name: 'Inglés' });
+    expect(s().habits[0].objectives).toHaveLength(1);
+  });
+});
+
+describe('migración desde la versión 4', () => {
+  it('los hábitos existentes empiezan sin objetivos', () => {
+    expect(migrate({ habits: [{ id: 'a', kind: 'build' }], completions: {} }, 4).habits[0]).toEqual({ id: 'a', kind: 'build', objectives: [] });
   });
 });
 

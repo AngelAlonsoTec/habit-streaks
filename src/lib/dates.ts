@@ -51,3 +51,17 @@ export function formatDay(key: DateKey, today: DateKey = todayKey()): string {
   const text = fromKey(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** El mismo día `months` meses después; si ese mes es más corto, su último día (31/1 + 1 → 28/2). */
+export function addMonths(d: Date, months: number): Date {
+  const target = new Date(d.getFullYear(), d.getMonth() + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  return new Date(target.getFullYear(), target.getMonth(), Math.min(d.getDate(), lastDay));
+}
+
+/** "12 mar"; con el año si no es el de `today` ("12 mar 2027"). */
+export function formatShortDate(key: DateKey, today: DateKey = todayKey()): string {
+  const d = fromKey(key);
+  const text = `${d.getDate()} ${MONTH_LABELS[d.getMonth()].toLowerCase()}`;
+  return d.getFullYear() === fromKey(today).getFullYear() ? text : `${text} ${d.getFullYear()}`;
+}

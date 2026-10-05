@@ -195,10 +195,10 @@ describe('datos y rendimiento', () => {
     }));
     await useHabits.persist.rehydrate();
     const [habit] = useHabits.getState().habits;
-    expect(habit).toMatchObject({ kind: 'build', unit: null, goal: { period: 'day', count: 1 }, archived: false });
+    expect(habit).toMatchObject({ kind: 'build', unit: null, goal: { period: 'day', count: 1 }, archived: false, objectives: [] });
     expect(computeStats(habit, useHabits.getState().completions.old, at(2026, 10, 5))).toMatchObject({ currentStreak: 2 });
     useHabits.getState().setCompletion('old', '2026-10-05', 1);
-    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('myhabits-store'))!).version).toBe(4));
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('myhabits-store'))!).version).toBe(5));
   });
 
   it('cambiar un hábito de veces a cantidad al editarlo conserva el historial', () => {

@@ -9,7 +9,9 @@ jest.mock('expo-crypto', () => ({
 
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
+  notificationAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: 'light' },
+  NotificationFeedbackType: { Success: 'success' },
 }));
 
 jest.mock('expo-notifications', () => ({

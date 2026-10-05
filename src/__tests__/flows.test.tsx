@@ -4,6 +4,8 @@ import path from 'path';
 import { makeHabit } from '@/testing/fixtures';
 import { addDays, toKey, weekdayIndex } from '@/lib/dates';
 import { Habit } from '@/lib/habit';
+import { Alert, AlertButton } from 'react-native';
+
 import { useHabits } from '@/store/habits';
 
 const APP_DIR = path.resolve(__dirname, '../app');
@@ -375,6 +377,62 @@ describe('flujos de la app', () => {
     await waitFor(() => expect(useHabits.getState().completions.h1).toEqual({ [today]: 1 }));
     fireEvent.press(screen.getByText('Quitar'));
     await waitFor(() => expect(useHabits.getState().completions.h1).toEqual({}));
+  });
+
+  it('objetivos: se añaden con una sugerencia y un plazo, se marcan y se ven en Hoy', async () => {
+    seed({ name: 'Aprender inglés', icon: 'language' });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText(/márcate hitos/)).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Añadir objetivo'));
+    fireEvent.press(await screen.findByText('Alcanzar el A1'));
+    expect(screen.getByDisplayValue('Alcanzar el A1')).toBeTruthy();
+    fireEvent.press(screen.getByText('En 3 meses'));
+    fireEvent.press(screen.getByText('Añadir objetivo'));
+    await waitFor(() => expect(useHabits.getState().habits[0].objectives).toHaveLength(1));
+
+    fireEvent.press(screen.getByLabelText('Añadir objetivo'));
+    fireEvent.changeText(await screen.findByLabelText('Objetivo'), 'Ver una serie sin subtítulos');
+    fireEvent.press(screen.getByText('Añadir objetivo'));
+    await waitFor(() => expect(useHabits.getState().habits[0].objectives).toHaveLength(2));
+
+    const [a1] = useHabits.getState().habits[0].objectives;
+    expect(a1.dueDate).not.toBeNull();
+    expect(screen.getByText('0 de 2 logrados')).toBeTruthy();
+    expect(screen.getByText('Próximo')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Marcar logrado: Alcanzar el A1'));
+    expect(useHabits.getState().habits[0].objectives[0].achievedOn).toBe(toKey(new Date()));
+    expect(await screen.findByText('1 de 2 logrados')).toBeTruthy();
+    expect(screen.getByText(/^Logrado el/)).toBeTruthy();
+
+    // En Hoy, la tarjeta muestra el siguiente pendiente.
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('Ver una serie sin subtítulos')).toBeTruthy();
+    expect(screen.getByText(/Próximo:/)).toBeTruthy();
+  });
+
+  it('objetivos: editar, reordenar y borrar desde su panel', async () => {
+    seed({
+      name: 'Correr',
+      objectives: ['5 km', '10 km', 'Media maratón'].map((title, i) => ({ id: `o${i}`, title, dueDate: null, achievedOn: null, createdAt: '' })),
+    });
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons?: AlertButton[]) => buttons?.[1].onPress?.());
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+
+    fireEvent.press(await screen.findByLabelText('Editar objetivo Media maratón'));
+    fireEvent.press(await screen.findByText('Subir'));
+    const titles = () => useHabits.getState().habits[0].objectives.map((o) => o.title);
+    await waitFor(() => expect(titles()).toEqual(['5 km', 'Media maratón', '10 km']));
+    fireEvent.changeText(screen.getByLabelText('Objetivo'), 'Media maratón (21 km)');
+    fireEvent.press(screen.getByText('Guardar'));
+    await waitFor(() => expect(titles()).toEqual(['5 km', 'Media maratón (21 km)', '10 km']));
+
+    fireEvent.press(screen.getByLabelText('Editar objetivo 10 km'));
+    fireEvent.press(await screen.findByLabelText('Eliminar objetivo'));
+    await waitFor(() => expect(titles()).toEqual(['5 km', 'Media maratón (21 km)']));
+    expect(useHabits.getState().habits).toHaveLength(1); // el hábito sigue ahí
+    jest.restoreAllMocks();
   });
 
   it('una URL de hábito inexistente no rompe la app', async () => {

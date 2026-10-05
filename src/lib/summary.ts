@@ -34,6 +34,8 @@ export type Summary = {
   weekdayRates: (number | null)[];
   /** Cumplimiento 0-1 de los hábitos diarios por día, para el heatmap de constancia. */
   dailyRates: Record<DateKey, number>;
+  /** Objetivos logrados en el periodo, del más reciente al más antiguo. */
+  objectivesAchieved: { habit: Habit; title: string; on: DateKey }[];
 };
 
 const MONTH_NAMES = [
@@ -242,5 +244,9 @@ export function summarize(
     habits: perHabit.sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1) || a.habit.name.localeCompare(b.habit.name)),
     weekdayRates: weekday.map(toRate),
     dailyRates,
+    objectivesAchieved: habits
+      .flatMap((h) => h.objectives.map((o) => ({ habit: h, title: o.title, on: o.achievedOn })))
+      .filter((o): o is { habit: Habit; title: string; on: DateKey } => o.on != null && o.on >= toKey(range.start) && o.on <= toKey(end))
+      .sort((a, b) => b.on.localeCompare(a.on)),
   };
 }

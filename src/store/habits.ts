@@ -6,6 +6,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Category } from '@/lib/categories';
 import type { DateKey } from '@/lib/dates';
 import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, MAX_AMOUNT, roundAmount, sortTimes } from '@/lib/habit';
+import { MAX_OBJECTIVE_LENGTH, Objective, ObjectiveInput } from '@/lib/objectives';
 
 export type { Habit, HabitInput } from '@/lib/habit';
 
@@ -30,6 +31,14 @@ type HabitsState = {
   /** Suma (o resta, con `delta` negativo) una cantidad al día de un hábito cuantitativo. */
   addAmount: (id: string, day: DateKey, delta: number) => void;
   addCategory: (name: string) => string;
+  /** Añade un objetivo al final; devuelve su id (o null si el título está vacío). */
+  addObjective: (habitId: string, input: ObjectiveInput) => string | null;
+  updateObjective: (habitId: string, objectiveId: string, input: Partial<ObjectiveInput>) => void;
+  /** Marca un objetivo como logrado ese día, o pendiente con null. */
+  setObjectiveAchieved: (habitId: string, objectiveId: string, day: DateKey | null) => void;
+  deleteObjective: (habitId: string, objectiveId: string) => void;
+  /** Sube (-1) o baja (+1) un objetivo en el orden. */
+  moveObjective: (habitId: string, objectiveId: string, delta: -1 | 1) => void;
   updateSettings: (settings: Partial<Settings>) => void;
 };
 
@@ -67,7 +76,7 @@ export const useHabits = create<HabitsState>()(
 
       addHabit: (input) => {
         const now = new Date().toISOString();
-        const habit: Habit = { ...normalize(input), id: randomUUID(), archived: false, createdAt: now, updatedAt: now };
+        const habit: Habit = { ...normalize(input), id: randomUUID(), objectives: [], archived: false, createdAt: now, updatedAt: now };
         set((s) => ({ habits: [...s.habits, habit] }));
         return habit.id;
       },
@@ -121,12 +130,52 @@ export const useHabits = create<HabitsState>()(
         return category.id;
       },
 
+      addObjective: (habitId, input) => {
+        const title = input.title.trim().slice(0, MAX_OBJECTIVE_LENGTH);
+        if (!title) return null;
+        const objective: Objective = { id: randomUUID(), title, dueDate: input.dueDate, achievedOn: null, createdAt: new Date().toISOString() };
+        set((s) => ({ habits: withObjectives(s.habits, habitId, (os) => [...os, objective]) }));
+        return objective.id;
+      },
+
+      updateObjective: (habitId, objectiveId, input) =>
+        set((s) => ({
+          habits: withObjectives(s.habits, habitId, (os) =>
+            os.map((o) => {
+              if (o.id !== objectiveId) return o;
+              // Un título vacío no deja el objetivo sin nombre: se conserva el anterior.
+              const title = input.title?.trim().slice(0, MAX_OBJECTIVE_LENGTH) || o.title;
+              return { ...o, ...input, title };
+            }),
+          ),
+        })),
+
+      setObjectiveAchieved: (habitId, objectiveId, day) =>
+        set((s) => ({
+          habits: withObjectives(s.habits, habitId, (os) => os.map((o) => (o.id === objectiveId ? { ...o, achievedOn: day } : o))),
+        })),
+
+      deleteObjective: (habitId, objectiveId) =>
+        set((s) => ({ habits: withObjectives(s.habits, habitId, (os) => os.filter((o) => o.id !== objectiveId)) })),
+
+      moveObjective: (habitId, objectiveId, delta) =>
+        set((s) => ({
+          habits: withObjectives(s.habits, habitId, (os) => {
+            const from = os.findIndex((o) => o.id === objectiveId);
+            const to = from + delta;
+            if (from < 0 || to < 0 || to >= os.length) return os;
+            const next = [...os];
+            [next[from], next[to]] = [next[to], next[from]];
+            return next;
+          }),
+        })),
+
       updateSettings: (settings) => set((s) => ({ settings: { ...s.settings, ...settings } })),
     }),
     {
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
@@ -134,6 +183,11 @@ export const useHabits = create<HabitsState>()(
     },
   ),
 );
+
+/** Aplica `fn` a la lista de objetivos de un hábito. */
+function withObjectives(habits: Habit[], habitId: string, fn: (objectives: Objective[]) => Objective[]): Habit[] {
+  return habits.map((h) => (h.id === habitId ? { ...h, objectives: fn(h.objectives), updatedAt: new Date().toISOString() } : h));
+}
 
 type PersistedAny = {
   habits?: Record<string, unknown>[];
@@ -174,6 +228,10 @@ export function migrate(persisted: PersistedAny, version: number) {
   if (version < 4) {
     // v4: hábitos para dejar. Todos los anteriores son para generar.
     state.habits = (state.habits ?? []).map((h) => ({ kind: 'build', ...h }));
+  }
+  if (version < 5) {
+    // v5: objetivos por hábito.
+    state.habits = (state.habits ?? []).map((h) => ({ objectives: [], ...h }));
   }
   return state as unknown as Pick<HabitsState, 'habits' | 'completions' | 'customCategories' | 'settings'>;
 }

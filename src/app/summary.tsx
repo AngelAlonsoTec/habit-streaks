@@ -237,6 +237,13 @@ type Insight = { icon: IconName; text: string; tone: 'good' | 'bad' };
 
 function buildInsights(s: ReturnType<typeof summarize>): Insight[] {
   const out: Insight[] = [];
+  const goals = s.objectivesAchieved;
+  if (goals.length === 1) {
+    out.push({ icon: 'flag', text: `Lograste «${goals[0].title}» (${goals[0].habit.name}).`, tone: 'good' });
+  } else if (goals.length > 1) {
+    const titles = goals.slice(0, 3).map((g) => `«${g.title}»`).join(', ');
+    out.push({ icon: 'flag', text: `Lograste ${goals.length} objetivos: ${titles}${goals.length > 3 ? '…' : ''}.`, tone: 'good' });
+  }
   const rated = s.habits.filter((h) => h.rate != null && h.scheduled >= 3);
   const best = rated[0];
   const worst = rated[rated.length - 1];
