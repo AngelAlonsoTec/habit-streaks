@@ -1,5 +1,5 @@
 import { addDays, startOfDay, toKey } from './dates';
-import { Completions, dailyTarget, Habit, isDoneFor, isScheduledOn, weekCount } from './habit';
+import { Completions, dailyTarget, formatAmount, Habit, isDoneFor, isScheduledOn, weekCount } from './habit';
 
 /** Días hacia delante que se programan. Se recalculan al abrir la app y al marcar hábitos. */
 const DAYS_AHEAD = 7;
@@ -45,6 +45,11 @@ export function planReminders(habits: Habit[], completions: Completions, now = n
 }
 
 function reminderBody(habit: Habit, count: number, target: number, week: number): string {
+  if (habit.unit != null) {
+    const unit = habit.unit;
+    if (habit.goal.period === 'week') return `Esta semana llevas ${formatAmount(week)} de ${formatAmount(habit.goal.count)} ${unit}.`;
+    return `Llevas ${formatAmount(count)} de ${formatAmount(target)} ${unit} hoy.`;
+  }
   if (habit.goal.period === 'week') return `Esta semana llevas ${week} de ${habit.goal.count}.`;
   if (target > 1) return `Llevas ${count} de ${target} hoy.`;
   return 'Pendiente para hoy.';

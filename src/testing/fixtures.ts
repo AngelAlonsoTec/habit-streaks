@@ -14,6 +14,7 @@ export function makeHabit(overrides: Partial<Habit> = {}): Habit {
     categories: [],
     timeOfDay: 'anytime',
     goal: { period: 'day', count: 1 },
+    unit: null,
     days: ALL_DAYS,
     reminders: [],
     archived: false,

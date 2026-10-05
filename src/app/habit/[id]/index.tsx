@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AmountSheet } from '@/components/AmountSheet';
 import { Heatmap, HeatmapLegend } from '@/components/Heatmap';
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { DateKey } from '@/lib/dates';
-import { dailyTarget, describeGoal, isScheduledOn, TIME_OF_DAY } from '@/lib/habit';
+import { dailyTarget, describeGoal, formatAmount, isQuantity, isScheduledOn, TIME_OF_DAY } from '@/lib/habit';
 import { confirmAction, goBack, tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
 import { useHabits } from '@/store/habits';
@@ -28,6 +29,7 @@ export default function HabitDetailScreen() {
   const setArchived = useHabits((s) => s.setArchived);
   const deleteHabit = useHabits((s) => s.deleteHabit);
   const heatmapScroll = useRef<ScrollView>(null);
+  const [amountDay, setAmountDay] = useState<DateKey | null>(null);
 
   const stats = useMemo(() => (habit ? computeStats(habit, counts) : null), [counts, habit]);
   const isScheduled = useCallback((d: Date) => (habit ? isScheduledOn(habit, d) : true), [habit]);
@@ -35,11 +37,13 @@ export default function HabitDetailScreen() {
   if (!habit || !stats) return null;
 
   const target = dailyTarget(habit);
+  const quantity = isQuantity(habit);
   const categories = [...DEFAULT_CATEGORIES, ...customCategories].filter((c) => habit.categories.includes(c.id));
 
   const onPressDay = (day: DateKey) => {
     tapFeedback();
-    cycleCompletion(habit.id, day);
+    if (quantity) setAmountDay(day);
+    else cycleCompletion(habit.id, day);
   };
   const onLongPressDay = (day: DateKey) => {
     tapFeedback();
@@ -64,7 +68,9 @@ export default function HabitDetailScreen() {
     { label: 'Racha actual', value: streakLabel(stats.currentStreak, stats.streakUnit), icon: 'flame' as const },
     { label: 'Mejor racha', value: streakLabel(stats.bestStreak, stats.streakUnit), icon: 'trophy' as const },
     { label: 'Cumplimiento 30 días', value: `${stats.rate30}%`, icon: 'stats-chart' as const },
-    { label: 'Veces completado', value: String(stats.total), icon: 'checkmark-done' as const },
+    quantity
+      ? { label: 'Total registrado', value: `${formatAmount(stats.total)} ${habit.unit}`, icon: 'checkmark-done' as const }
+      : { label: 'Veces completado', value: String(stats.total), icon: 'checkmark-done' as const },
   ];
 
   return (
@@ -139,7 +145,7 @@ export default function HabitDetailScreen() {
               showWeekdayLabels
             />
           </ScrollView>
-          {target > 1 && <HeatmapLegend color={habit.color} />}
+          {(target > 1 || quantity) && <HeatmapLegend color={habit.color} />}
         </Card>
 
         <Card style={styles.cardGap}>
@@ -147,12 +153,15 @@ export default function HabitDetailScreen() {
             counts={counts}
             color={habit.color}
             target={target}
+            unit={habit.unit}
             isScheduled={isScheduled}
             onPressDay={onPressDay}
             onLongPressDay={onLongPressDay}
           />
           <Text style={[styles.hint, { color: theme.muted }]}>
-            {target > 1
+            {quantity
+              ? 'Toca un día para registrar una cantidad. Mantén pulsado para borrarlo.'
+              : target > 1
               ? 'Toca un día para sumar una vez. Mantén pulsado para reiniciarlo.'
               : 'Toca un día para marcarlo o desmarcarlo.'}
           </Text>
@@ -178,6 +187,7 @@ export default function HabitDetailScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      <AmountSheet target={amountDay ? { habit, day: amountDay } : null} onClose={() => setAmountDay(null)} />
     </>
   );
 }

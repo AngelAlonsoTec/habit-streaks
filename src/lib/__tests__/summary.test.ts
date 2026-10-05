@@ -70,6 +70,13 @@ describe('summarize', () => {
     expect(s.elapsedDays).toBe(5);
   });
 
+  it('las cantidades no inflan las veces: un día con registro cuenta una vez', () => {
+    const steps = makeHabit({ id: 'steps', name: 'Caminar', unit: 'pasos', goal: { period: 'day', count: 10000 } });
+    const s = summarize([steps], { steps: { '2026-09-21': 12000, '2026-09-22': 4000 } }, 'week', 0, NOW);
+    expect(s.completions).toBe(2);
+    expect(s.habits[0]).toMatchObject({ scheduled: 4, done: 1 }); // solo el lunes llegó a la meta
+  });
+
   it('gráfica por día, con los días futuros vacíos y hoy marcado', () => {
     const s = summarize([read, gym], completions, 'week', 0, NOW);
     expect(s.buckets.map((b) => b.label)).toEqual(['L', 'M', 'X', 'J', 'V', 'S', 'D']);

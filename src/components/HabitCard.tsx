@@ -5,8 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CheckButton } from '@/components/CheckButton';
 import { Heatmap } from '@/components/Heatmap';
-import { DateKey, fromKey } from '@/lib/dates';
-import { dailyTarget, describeGoal, Habit, isScheduledOn, weekCount } from '@/lib/habit';
+import { DateKey, fromKey, todayKey } from '@/lib/dates';
+import { dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isScheduledOn, weekCount } from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
 import { useHabits } from '@/store/habits';
@@ -19,9 +19,11 @@ type Props = {
   showHeatmap: boolean;
   dimmed?: boolean;
   onLongPress?: (habit: Habit) => void;
+  /** Abre el panel de cantidades (hábitos cuantitativos). */
+  onLogAmount?: (habit: Habit, day: DateKey) => void;
 };
 
-export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimmed, onLongPress }: Props) {
+export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimmed, onLongPress, onLogAmount }: Props) {
   const theme = useTheme();
   const counts = useHabits((s) => s.completions[habit.id]);
   const cycleCompletion = useHabits((s) => s.cycleCompletion);
@@ -30,15 +32,20 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
   const date = fromKey(day);
   const count = counts?.[day] ?? 0;
   const weekly = habit.goal.period === 'week';
+  const quantity = isQuantity(habit);
   const target = dailyTarget(habit);
+  const week = weekly ? weekCount(counts, date) : 0;
   const stats = useMemo(() => computeStats(habit, counts), [habit, counts]);
   const isScheduled = useCallback((d: Date) => isScheduledOn(habit, d), [habit]);
+  const when = day === todayKey() ? ' hoy' : '';
 
   const detail = weekly
-    ? `${weekCount(counts, date)}/${habit.goal.count} esta semana`
-    : target > 1
-      ? `${Math.min(count, target)}/${target} hoy`
-      : describeGoal(habit);
+    ? `${describeProgress(habit, week, habit.goal.count)} esta semana`
+    : quantity
+      ? describeProgress(habit, count, target) + when
+      : target > 1
+        ? `${Math.min(count, target)}/${target}${when}`
+        : describeGoal(habit);
   const reminder = habit.reminders[0];
 
   return (
@@ -82,20 +89,34 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
             )}
           </View>
         </View>
-        <CheckButton
-          count={weekly ? Math.min(count, 1) : count}
-          target={target}
-          color={habit.color}
-          accessibilityLabel={`Marcar ${habit.name}`}
-          onPress={() => {
-            tapFeedback();
-            cycleCompletion(habit.id, day);
-          }}
-          onLongPress={() => {
-            tapFeedback();
-            setCompletion(habit.id, day, 0);
-          }}
-        />
+        {quantity ? (
+          <CheckButton
+            quantity
+            count={weekly ? week : count}
+            target={weekly ? habit.goal.count : target}
+            color={habit.color}
+            accessibilityLabel={`Registrar ${habit.name}`}
+            onPress={() => {
+              tapFeedback();
+              onLogAmount?.(habit, day);
+            }}
+          />
+        ) : (
+          <CheckButton
+            count={weekly ? Math.min(count, 1) : count}
+            target={target}
+            color={habit.color}
+            accessibilityLabel={`Marcar ${habit.name}`}
+            onPress={() => {
+              tapFeedback();
+              cycleCompletion(habit.id, day);
+            }}
+            onLongPress={() => {
+              tapFeedback();
+              setCompletion(habit.id, day, 0);
+            }}
+          />
+        )}
       </View>
 
       {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo. */}

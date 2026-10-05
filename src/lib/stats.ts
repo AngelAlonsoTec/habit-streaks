@@ -6,7 +6,7 @@ export type HabitStats = {
   currentStreak: number;
   bestStreak: number;
   streakUnit: 'day' | 'week';
-  /** Veces completado en total. */
+  /** Veces completado en total (o cantidad total en hábitos cuantitativos). */
   total: number;
   /** Porcentaje (0-100) de cumplimiento en los últimos 30 días. */
   rate30: number;
@@ -14,7 +14,7 @@ export type HabitStats = {
   weekdayCounts: number[];
 };
 
-type StatsHabit = Pick<Habit, 'goal' | 'days' | 'createdAt'>;
+type StatsHabit = Pick<Habit, 'goal' | 'unit' | 'days' | 'createdAt'>;
 
 export function computeStats(habit: StatsHabit, days: Record<DateKey, number> | undefined, now = new Date()): HabitStats {
   const counts = days ?? {};

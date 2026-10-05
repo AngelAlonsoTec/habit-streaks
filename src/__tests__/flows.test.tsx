@@ -104,6 +104,56 @@ describe('flujos de la app', () => {
     expect(await screen.findByText('0/3 esta semana')).toBeTruthy();
   });
 
+  it('crea un hábito cuantitativo y registra cantidades con el panel', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/habit/new' });
+    fireEvent.changeText(await screen.findByPlaceholderText('Nombre del hábito'), 'Correr');
+    next();
+    fireEvent.press(await screen.findByText('Cantidad'));
+    fireEvent.press(screen.getByText('km'));
+    fireEvent.changeText(screen.getByLabelText('Meta'), '7,5');
+    fireEvent(screen.getByLabelText('Meta'), 'blur');
+    next();
+    next();
+    fireEvent.press(screen.getByText('Crear hábito'));
+    await waitFor(() => expect(screen).toHavePathname('/'));
+
+    const [habit] = useHabits.getState().habits;
+    expect(habit).toMatchObject({ unit: 'km', goal: { period: 'day', count: 7.5 } });
+    expect(await screen.findByText('0 / 7,5 km hoy')).toBeTruthy();
+
+    const today = toKey(new Date());
+    fireEvent.press(screen.getByLabelText('Registrar Correr'));
+    fireEvent.press(await screen.findByLabelText('Sumar 2 km'));
+    fireEvent.changeText(screen.getByLabelText('Cantidad'), '1,5');
+    fireEvent.press(screen.getByText('Sumar'));
+    await waitFor(() => expect(useHabits.getState().completions[habit.id]).toEqual({ [today]: 3.5 }));
+    fireEvent.changeText(screen.getByLabelText('Cantidad'), '0,5');
+    fireEvent.press(screen.getByText('Restar'));
+    await waitFor(() => expect(useHabits.getState().completions[habit.id]).toEqual({ [today]: 3 }));
+
+    fireEvent.press(screen.getAllByLabelText('Cerrar').at(-1)!);
+    expect(await screen.findByText('3 / 7,5 km hoy')).toBeTruthy();
+  });
+
+  it('una unidad propia en un hábito cuantitativo semanal', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/habit/new' });
+    fireEvent.changeText(await screen.findByPlaceholderText('Nombre del hábito'), 'Novela');
+    next();
+    fireEvent.press(await screen.findByText('Cantidad'));
+    fireEvent.press(screen.getByText('Semanal'));
+    fireEvent.press(screen.getByText('Otra'));
+    fireEvent.changeText(screen.getByLabelText('Unidad propia'), 'capítulos');
+    fireEvent(screen.getByLabelText('Unidad propia'), 'submitEditing');
+    fireEvent.changeText(screen.getByLabelText('Meta'), '10');
+    fireEvent(screen.getByLabelText('Meta'), 'submitEditing');
+    next();
+    next();
+    fireEvent.press(screen.getByText('Crear hábito'));
+    await waitFor(() => expect(screen).toHavePathname('/'));
+    expect(useHabits.getState().habits[0]).toMatchObject({ unit: 'capítulos', goal: { period: 'week', count: 10 } });
+    expect(await screen.findByText('0 / 10 capítulos esta semana')).toBeTruthy();
+  });
+
   it('no se puede avanzar sin nombre; los pasos visitados se pueden revisar', async () => {
     renderRouter(APP_DIR, { initialUrl: '/habit/new' });
     fireEvent.press(await screen.findByText('Siguiente'));

@@ -8,10 +8,13 @@ import { TimePickerModal } from '@/components/TimePickerModal';
 import { Chip, SectionTitle, Segmented } from '@/components/ui';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { WEEKDAY_LABELS } from '@/lib/dates';
-import { ALL_DAYS, Goal, HabitInput, sortTimes, TIME_OF_DAY, TIME_OF_DAY_ORDER, TimeOfDay } from '@/lib/habit';
+import {
+  ALL_DAYS, formatAmount, Goal, HabitInput, MAX_AMOUNT, parseAmount, roundAmount, sortTimes, TIME_OF_DAY, TIME_OF_DAY_ORDER,
+  TimeOfDay, UNIT_PRESETS, unitPreset,
+} from '@/lib/habit';
 import { REMINDERS_SUPPORTED, REMINDERS_UNAVAILABLE_MESSAGE, requestReminderPermission } from '@/lib/notifications';
 import { HABIT_TEMPLATES } from '@/lib/templates';
-import { MAX_GOAL, useHabits } from '@/store/habits';
+import { MAX_GOAL, MAX_UNIT_LENGTH, useHabits } from '@/store/habits';
 import { HABIT_COLORS, HABIT_ICONS, IconName, useTheme } from '@/theme';
 
 type Props = {
@@ -35,6 +38,9 @@ const DAY_PRESETS = [
 
 const COLLAPSED_ICON_ROWS = 2;
 
+type Measure = 'count' | 'amount';
+const DEFAULT_UNIT = UNIT_PRESETS[0];
+
 export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -49,6 +55,11 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const [categories, setCategories] = useState<string[]>(initial?.categories ?? []);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initial?.timeOfDay ?? 'anytime');
   const [goal, setGoal] = useState<Goal>(initial?.goal ?? { period: 'day', count: 1 });
+  const [measure, setMeasure] = useState<Measure>(initial?.unit != null ? 'amount' : 'count');
+  const [unit, setUnit] = useState(initial?.unit ?? DEFAULT_UNIT.unit);
+  /** Texto del campo de la meta en cantidades (se edita libremente y se valida al salir). */
+  const [amountText, setAmountText] = useState(initial?.unit != null ? formatAmount(initial.goal.count) : '');
+  const [editingUnit, setEditingUnit] = useState(false);
   const [days, setDays] = useState<number[]>(initial?.days ?? ALL_DAYS);
   const [reminders, setReminders] = useState<string[]>(initial?.reminders ?? []);
   const [showAllIcons, setShowAllIcons] = useState(!isNew && HABIT_ICONS.indexOf(initial.icon) >= 10);
@@ -74,6 +85,9 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
     setCategories(t.categories);
     setTimeOfDay(t.timeOfDay);
     setGoal(t.goal);
+    setMeasure(t.unit != null ? 'amount' : 'count');
+    setUnit(t.unit ?? DEFAULT_UNIT.unit);
+    setAmountText(t.unit != null ? formatAmount(t.goal.count) : '');
     setDays(t.days);
     setReminders(t.reminders);
     setShowAllIcons(HABIT_ICONS.indexOf(t.icon) >= 10);
@@ -95,6 +109,26 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
 
   const setCount = (count: number) => setGoal((g) => ({ ...g, count: Math.min(Math.max(1, count), MAX_GOAL) }));
 
+  const setAmount = (amount: number) => {
+    const count = Math.min(Math.max(0.01, roundAmount(amount)), MAX_AMOUNT);
+    setGoal((g) => ({ ...g, count }));
+    setAmountText(formatAmount(count));
+  };
+  const amountStep = unitPreset(unit)?.steps[0] ?? 1;
+
+  const changeMeasure = (m: Measure) => {
+    setMeasure(m);
+    if (m === 'amount') setAmount(unitPreset(unit)?.goal ?? DEFAULT_UNIT.goal);
+    else setGoal((g) => ({ ...g, count: g.period === 'week' ? 3 : 1 }));
+  };
+
+  const chooseUnit = (u: string) => {
+    setEditingUnit(false);
+    setUnit(u);
+    const preset = unitPreset(u);
+    if (preset) setAmount(goal.period === 'week' ? preset.goal * 7 : preset.goal);
+  };
+
   const openPicker = async (index: number | null) => {
     if (REMINDERS_SUPPORTED) setPermissionDenied(!(await requestReminderPermission()));
     const time = index == null ? TIME_OF_DAY[timeOfDay].defaultReminder : reminders[index];
@@ -109,7 +143,8 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
 
   const submit = () => {
     if (!hasName) return;
-    onSubmit({ name: name.trim(), color, icon, categories, timeOfDay, goal, days, reminders });
+    const finalUnit = measure === 'amount' ? unit.trim() || 'unidades' : null;
+    onSubmit({ name: name.trim(), color, icon, categories, timeOfDay, goal, unit: finalUnit, days, reminders });
   };
 
   const current = STEPS[step];
@@ -196,8 +231,121 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
     </>
   );
 
+  const isPresetUnit = unitPreset(unit) != null;
+  const customUnit = !isPresetUnit && !!unit.trim();
+  const unitChips = (
+    <>
+      <SectionTitle>Unidad</SectionTitle>
+      <View style={styles.wrap}>
+        {UNIT_PRESETS.map((p) => (
+          <Chip key={p.unit} label={p.unit} color={color} selected={!editingUnit && p.unit === unit} onPress={() => chooseUnit(p.unit)} />
+        ))}
+        {editingUnit ? (
+          <TextInput
+            value={isPresetUnit ? '' : unit}
+            onChangeText={setUnit}
+            onSubmitEditing={() => setEditingUnit(false)}
+            onBlur={() => setEditingUnit(false)}
+            autoFocus
+            placeholder="Ej.: capítulos"
+            placeholderTextColor={theme.muted}
+            maxLength={MAX_UNIT_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="Unidad propia"
+            style={[styles.categoryInput, styles.unitInput, { color: theme.text, borderColor: color }]}
+          />
+        ) : (
+          <Chip
+            label={customUnit ? unit : 'Otra'}
+            icon={customUnit ? 'create-outline' : 'add'}
+            color={color}
+            selected={customUnit}
+            onPress={() => {
+              if (isPresetUnit) setUnit('');
+              setEditingUnit(true);
+            }}
+          />
+        )}
+      </View>
+    </>
+  );
+
+  const amountStepper = (
+    <View style={[styles.stepperRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <Pressable
+        onPress={() => setAmount(goal.count - amountStep)}
+        accessibilityLabel="Reducir meta"
+        style={[styles.stepperButton, { backgroundColor: theme.surface }]}
+      >
+        <Ionicons name="remove" size={20} color={theme.text} />
+      </Pressable>
+      <View style={styles.stepperValue}>
+        <View style={styles.amountRow}>
+          <TextInput
+            value={amountText}
+            onChangeText={setAmountText}
+            onBlur={() => setAmount(parseAmount(amountText) ?? goal.count)}
+            onSubmitEditing={() => setAmount(parseAmount(amountText) ?? goal.count)}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            selectTextOnFocus
+            accessibilityLabel="Meta"
+            // Ancho según el texto: así número y unidad quedan juntos y centrados.
+            style={[styles.stepperNumber, styles.amountInput, { color: theme.text, width: (amountText.length + 1) * 15 }]}
+          />
+          <Text style={[styles.amountUnit, { color: theme.muted }]} numberOfLines={1}>{unit.trim() || 'unidades'}</Text>
+        </View>
+        <Text style={[styles.stepperLabel, { color: theme.muted }]}>{goal.period === 'day' ? 'al día' : 'por semana'}</Text>
+      </View>
+      <Pressable
+        onPress={() => setAmount(goal.count + amountStep)}
+        accessibilityLabel="Aumentar meta"
+        style={[styles.stepperButton, { backgroundColor: theme.surface }]}
+      >
+        <Ionicons name="add" size={20} color={theme.text} />
+      </Pressable>
+    </View>
+  );
+
+  const countStepper = (
+    <View style={[styles.stepperRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <Pressable
+        onPress={() => setCount(goal.count - 1)}
+        accessibilityLabel="Menos veces"
+        style={[styles.stepperButton, { backgroundColor: theme.surface }]}
+      >
+        <Ionicons name="remove" size={20} color={theme.text} />
+      </Pressable>
+      <View style={styles.stepperValue}>
+        <Text style={[styles.stepperNumber, { color: theme.text }]}>{goal.count}</Text>
+        <Text style={[styles.stepperLabel, { color: theme.muted }]}>
+          {goal.count === 1 ? 'vez' : 'veces'} {goal.period === 'day' ? 'al día' : 'por semana'}
+        </Text>
+      </View>
+      <Pressable
+        onPress={() => setCount(goal.count + 1)}
+        accessibilityLabel="Más veces"
+        style={[styles.stepperButton, { backgroundColor: theme.surface }]}
+      >
+        <Ionicons name="add" size={20} color={theme.text} />
+      </Pressable>
+    </View>
+  );
+
   const stepGoal = (
     <>
+      <SectionTitle>¿Cómo lo mides?</SectionTitle>
+      <Segmented
+        value={measure}
+        color={color}
+        options={[
+          { value: 'count', label: 'Veces', icon: 'checkmark-done-outline' },
+          { value: 'amount', label: 'Cantidad', icon: 'speedometer-outline' },
+        ]}
+        onChange={changeMeasure}
+      />
+      {measure === 'amount' && unitChips}
+
       <SectionTitle>Meta</SectionTitle>
       <Segmented
         value={goal.period}
@@ -206,34 +354,20 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
           { value: 'day', label: 'Diaria', icon: 'today-outline' },
           { value: 'week', label: 'Semanal', icon: 'calendar-outline' },
         ]}
-        onChange={(period) => setGoal((g) => ({ period, count: period === 'week' ? Math.min(Math.max(g.count, 3), 7) : 1 }))}
+        onChange={(period) =>
+          setGoal((g) => ({
+            period,
+            count: measure === 'amount' ? g.count : period === 'week' ? Math.min(Math.max(g.count, 3), 7) : 1,
+          }))
+        }
       />
-      <View style={[styles.stepperRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Pressable
-          onPress={() => setCount(goal.count - 1)}
-          accessibilityLabel="Menos veces"
-          style={[styles.stepperButton, { backgroundColor: theme.surface }]}
-        >
-          <Ionicons name="remove" size={20} color={theme.text} />
-        </Pressable>
-        <View style={styles.stepperValue}>
-          <Text style={[styles.stepperNumber, { color: theme.text }]}>{goal.count}</Text>
-          <Text style={[styles.stepperLabel, { color: theme.muted }]}>
-            {goal.count === 1 ? 'vez' : 'veces'} {goal.period === 'day' ? 'al día' : 'por semana'}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setCount(goal.count + 1)}
-          accessibilityLabel="Más veces"
-          style={[styles.stepperButton, { backgroundColor: theme.surface }]}
-        >
-          <Ionicons name="add" size={20} color={theme.text} />
-        </Pressable>
-      </View>
+      {measure === 'amount' ? amountStepper : countStepper}
       <Text style={[styles.hint, { color: theme.muted }]}>
-        {goal.period === 'day'
-          ? 'Por ejemplo, 8 para vasos de agua. Cada toque en el hábito suma una vez.'
-          : 'Elige tú qué días hacerlo; lo importante es llegar a la meta de la semana.'}
+        {measure === 'amount'
+          ? 'Cada vez que lo hagas, anota la cantidad con las sumas rápidas o escribiendo el número exacto.'
+          : goal.period === 'day'
+            ? 'Por ejemplo, 8 para vasos de agua. Cada toque en el hábito suma una vez.'
+            : 'Elige tú qué días hacerlo; lo importante es llegar a la meta de la semana.'}
       </Text>
 
       {goal.period === 'day' && (
@@ -456,6 +590,10 @@ const styles = StyleSheet.create({
   stepperValue: { flex: 1, alignItems: 'center' },
   stepperNumber: { fontSize: 24, fontWeight: '800' },
   stepperLabel: { fontSize: 13 },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 6, maxWidth: '100%' },
+  amountInput: { minWidth: 36, maxWidth: 160, textAlign: 'center', padding: 0, ...Platform.select({ web: { outlineWidth: 0 } }) },
+  amountUnit: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  unitInput: { minWidth: 120 },
   daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   dayCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   dayText: { fontSize: 14, fontWeight: '700' },

@@ -5,7 +5,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { Category } from '@/lib/categories';
 import type { DateKey } from '@/lib/dates';
-import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, sortTimes } from '@/lib/habit';
+import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, MAX_AMOUNT, roundAmount, sortTimes } from '@/lib/habit';
 
 export type { Habit, HabitInput } from '@/lib/habit';
 
@@ -27,17 +27,26 @@ type HabitsState = {
   /** Suma una vez; al pasar la meta diaria vuelve a 0 (así un toque siempre hace algo). */
   cycleCompletion: (id: string, day: DateKey) => void;
   setCompletion: (id: string, day: DateKey, count: number) => void;
+  /** Suma (o resta, con `delta` negativo) una cantidad al día de un hábito cuantitativo. */
+  addAmount: (id: string, day: DateKey, delta: number) => void;
   addCategory: (name: string) => string;
   updateSettings: (settings: Partial<Settings>) => void;
 };
 
+/** Máximo de veces en metas por veces (las cantidades llegan hasta MAX_AMOUNT). */
 export const MAX_GOAL = 50;
+export const MAX_UNIT_LENGTH = 12;
 
 function normalize(input: HabitInput): HabitInput {
+  const unit = input.unit?.trim().slice(0, MAX_UNIT_LENGTH) || null;
+  const count = unit
+    ? Math.min(Math.max(0.01, roundAmount(input.goal.count)), MAX_AMOUNT)
+    : Math.min(Math.max(1, Math.round(input.goal.count)), MAX_GOAL);
   return {
     ...input,
     name: input.name.trim(),
-    goal: { period: input.goal.period, count: Math.min(Math.max(1, Math.round(input.goal.count)), MAX_GOAL) },
+    unit,
+    goal: { period: input.goal.period, count },
     days: input.days.length ? [...new Set(input.days)].sort() : ALL_DAYS,
     reminders: sortTimes(input.reminders),
   };
@@ -94,6 +103,11 @@ export const useHabits = create<HabitsState>()(
           return { completions: { ...s.completions, [id]: days } };
         }),
 
+      addAmount: (id, day, delta) => {
+        const current = get().completions[id]?.[day] ?? 0;
+        get().setCompletion(id, day, Math.min(Math.max(0, roundAmount(current + delta)), MAX_AMOUNT));
+      },
+
       addCategory: (name) => {
         const trimmed = name.trim();
         const existing = get().customCategories.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
@@ -108,7 +122,7 @@ export const useHabits = create<HabitsState>()(
     {
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
@@ -148,6 +162,10 @@ export function migrate(persisted: PersistedAny, version: number) {
     );
     state.customCategories = [];
     state.settings = { showHeatmaps: true };
+  }
+  if (version < 3) {
+    // v3: hábitos cuantitativos. Los anteriores se siguen contando por veces.
+    state.habits = (state.habits ?? []).map((h) => ({ unit: null, ...h }));
   }
   return state as unknown as Pick<HabitsState, 'habits' | 'completions' | 'customCategories' | 'settings'>;
 }

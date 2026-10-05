@@ -190,7 +190,7 @@ describe('formulario: límites', () => {
 
   it('categorías: se pueden quitar y una categoría en blanco no se crea', async () => {
     renderRouter(APP_DIR, { initialUrl: '/habit/new' });
-    fireEvent.press(await screen.findByText('Leer 20 minutos')); // plantilla con categoría Lectura
+    fireEvent.press(await screen.findByText('Leer')); // plantilla con categoría Lectura
     next();
     next();
     next();

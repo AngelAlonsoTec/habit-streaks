@@ -1,5 +1,5 @@
 import { addDays, DateKey, fromKey, MONTH_LABELS, startOfDay, startOfWeek, toKey, weekdayIndex, WEEKDAY_LABELS } from './dates';
-import { Completions, Habit, isDayComplete, isScheduledOn, weekCount } from './habit';
+import { Completions, Habit, isDayComplete, isQuantity, isScheduledOn, weekCount } from './habit';
 
 export type Period = 'week' | 'month' | 'quarter' | 'year';
 
@@ -17,7 +17,7 @@ export type Summary = {
   /** Cumplimiento 0-100, o null si en el periodo no tocaba nada. */
   rate: number | null;
   previousRate: number | null;
-  /** Veces completado (suma de repeticiones). */
+  /** Veces completado (suma de repeticiones; en hábitos cuantitativos, un día con registro cuenta una vez). */
   completions: number;
   /** Días en que se cumplieron todos los hábitos diarios que tocaban. */
   perfectDays: number;
@@ -214,7 +214,8 @@ export function summarize(
     let pendingToday = 0;
     for (const h of habits) {
       const count = completions[h.id]?.[key] ?? 0;
-      dayCount += count;
+      // Las cantidades no se suman: 5 km y 10.000 pasos no son 10.005 veces.
+      dayCount += isQuantity(h) ? Number(count > 0) : count;
       if (h.goal.period !== 'day') continue;
       const o = occurrences(h, completions[h.id], d, d, t, true, origins.get(h.id));
       day.scheduled += o.scheduled;

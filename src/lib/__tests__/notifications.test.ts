@@ -35,6 +35,13 @@ describe('planReminders', () => {
     expect(first.body).toBe('Llevas 3 de 8 hoy.');
   });
 
+  it('muestra la cantidad con su unidad en hábitos cuantitativos', () => {
+    const daily = makeHabit({ reminders: ['20:00'], unit: 'km', goal: { period: 'day', count: 5 } });
+    expect(planReminders([daily], { h1: { '2026-09-25': 2.5 } }, NOW)[0].body).toBe('Llevas 2,5 de 5 km hoy.');
+    const weekly = makeHabit({ reminders: ['20:00'], unit: 'min', goal: { period: 'week', count: 150 } });
+    expect(planReminders([weekly], { h1: { '2026-09-22': 45 } }, NOW)[0].body).toBe('Esta semana llevas 45 de 150 min.');
+  });
+
   it('ignora archivados y respeta el máximo de 60, en orden', () => {
     const many = Array.from({ length: 12 }, (_, i) => makeHabit({ id: `h${i}`, reminders: ['07:00', '12:00', '19:00'] }));
     const archived = makeHabit({ id: 'arch', reminders: ['16:00'], archived: true });

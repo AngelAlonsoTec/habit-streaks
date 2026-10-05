@@ -4,18 +4,21 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { cellColor } from '@/components/Heatmap';
 import { addDays, DateKey, fromKey, startOfWeek, toKey, todayKey, WEEKDAY_LABELS } from '@/lib/dates';
+import { formatAmount } from '@/lib/habit';
 import { useTheme } from '@/theme';
 
 type Props = {
   counts?: Record<DateKey, number>;
   color: string;
   target: number;
+  /** Unidad de los hábitos cuantitativos (null = veces). */
+  unit?: string | null;
   isScheduled: (date: Date) => boolean;
   onPressDay: (day: DateKey) => void;
   onLongPressDay: (day: DateKey) => void;
 };
 
-export function MonthCalendar({ counts, color, target, isScheduled, onPressDay, onLongPressDay }: Props) {
+export function MonthCalendar({ counts, color, target, unit = null, isScheduled, onPressDay, onLongPressDay }: Props) {
   const theme = useTheme();
   const today = todayKey();
   const [offset, setOffset] = useState(0);
@@ -73,7 +76,7 @@ export function MonthCalendar({ counts, color, target, isScheduled, onPressDay, 
                 disabled={future}
                 onPress={() => onPressDay(key)}
                 onLongPress={() => onLongPressDay(key)}
-                accessibilityLabel={`${key}${count ? `, ${count} ${count === 1 ? 'vez' : 'veces'}` : ''}`}
+                accessibilityLabel={`${key}${!count ? '' : unit != null ? `, ${formatAmount(count)} ${unit}` : `, ${count} ${count === 1 ? 'vez' : 'veces'}`}`}
                 style={styles.cell}
               >
                 <View
@@ -85,9 +88,11 @@ export function MonthCalendar({ counts, color, target, isScheduled, onPressDay, 
                   ]}
                 >
                   <Text style={[styles.dayText, { color: fg }, progress >= 1 && styles.bold]}>{d.getDate()}</Text>
-                  {target > 1 && count > 0 && count < target && (
+                  {unit != null && count > 0 && count < target ? (
+                    <Text style={[styles.badge, { color: theme.text }]} numberOfLines={1}>{formatAmount(count)}</Text>
+                  ) : target > 1 && count > 0 && count < target ? (
                     <Text style={[styles.badge, { color: theme.text }]}>{count}/{target}</Text>
-                  )}
+                  ) : null}
                 </View>
               </Pressable>
             );

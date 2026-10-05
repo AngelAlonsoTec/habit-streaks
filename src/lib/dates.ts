@@ -43,3 +43,11 @@ export const MONTH_LABELS = [
   'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
 ];
+
+/** "Hoy", "Ayer" o la fecha completa: "Lunes, 3 de octubre". */
+export function formatDay(key: DateKey, today: DateKey = todayKey()): string {
+  if (key === today) return 'Hoy';
+  if (key === toKey(addDays(fromKey(today), -1))) return 'Ayer';
+  const text = fromKey(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}

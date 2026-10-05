@@ -136,3 +136,13 @@ describe('computeStats · casos límite', () => {
     expect(computeStats(makeHabit(), { [TODAY]: 0 }, NOW)).toMatchObject({ total: 0, currentStreak: 0 });
   });
 });
+
+describe('estadísticas de hábitos cuantitativos', () => {
+  it('la racha solo cuenta los días que llegan a la meta y el total suma cantidades', () => {
+    const habit = makeHabit({ unit: 'km', goal: { period: 'day', count: 5 } });
+    const days = { '2026-09-22': 5, '2026-09-23': 2.5, '2026-09-24': 6, '2026-09-25': 5.5 };
+    const stats = computeStats(habit, days, NOW);
+    expect(stats.currentStreak).toBe(2);
+    expect(stats.total).toBe(19);
+  });
+});

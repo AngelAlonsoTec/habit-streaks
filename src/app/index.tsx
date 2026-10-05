@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AmountSheet } from '@/components/AmountSheet';
 import { HabitActionsSheet } from '@/components/HabitActionsSheet';
 import { HabitCard } from '@/components/HabitCard';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -52,6 +53,8 @@ export default function TodayScreen() {
   const [selectedDay, setSelectedDay] = useState<DateKey>(today);
   const [category, setCategory] = useState<string | null>(null);
   const [menuHabit, setMenuHabit] = useState<Habit | null>(null);
+  const [amountTarget, setAmountTarget] = useState<{ habit: Habit; day: DateKey } | null>(null);
+  const openAmount = useCallback((habit: Habit, day: DateKey) => setAmountTarget({ habit, day }), []);
 
   const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
   const archivedCount = allHabits.length - habits.length;
@@ -177,7 +180,7 @@ export default function TodayScreen() {
                   <Text style={[styles.sectionTitle, { color: theme.muted }]}>{TIME_OF_DAY[section.tod].label}</Text>
                 </View>
                 {section.habits.map((h) => (
-                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} />
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} onLogAmount={openAmount} />
                 ))}
               </View>
             ))}
@@ -189,7 +192,7 @@ export default function TodayScreen() {
                   <Text style={[styles.sectionTitle, { color: theme.muted }]}>Descanso este día</Text>
                 </View>
                 {resting.map((h) => (
-                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={false} dimmed onLongPress={setMenuHabit} />
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={false} dimmed onLongPress={setMenuHabit} onLogAmount={openAmount} />
                 ))}
               </View>
             )}
@@ -212,6 +215,7 @@ export default function TodayScreen() {
       )}
 
       <HabitActionsSheet habit={menuHabit} onClose={() => setMenuHabit(null)} />
+      <AmountSheet target={amountTarget} onClose={() => setAmountTarget(null)} />
     </>
   );
 }

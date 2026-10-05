@@ -13,9 +13,11 @@ type Props = {
   onLongPress?: () => void;
   accessibilityLabel: string;
   size?: number;
+  /** Hábito cuantitativo: el anillo muestra el progreso y un "+" (la cantidad va en el texto de la tarjeta). */
+  quantity?: boolean;
 };
 
-export function CheckButton({ count, target, color, onPress, onLongPress, accessibilityLabel, size = 46 }: Props) {
+export function CheckButton({ count, target, color, onPress, onLongPress, accessibilityLabel, size = 46, quantity }: Props) {
   const theme = useTheme();
   const done = count >= target;
   const [scale] = useState(() => new Animated.Value(1));
@@ -40,10 +42,16 @@ export function CheckButton({ count, target, color, onPress, onLongPress, access
       accessibilityRole="button"
       accessibilityState={{ checked: done }}
       accessibilityLabel={accessibilityLabel}
-      accessibilityHint={target > 1 ? 'Toca para sumar una vez. Mantén pulsado para reiniciar.' : undefined}
+      accessibilityHint={
+        quantity ? 'Toca para registrar una cantidad.' : target > 1 ? 'Toca para sumar una vez. Mantén pulsado para reiniciar.' : undefined
+      }
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        {target > 1 && !done ? (
+        {quantity && !done ? (
+          <ProgressRing size={size} strokeWidth={4} progress={count / target} color={color} trackColor={tint}>
+            <Ionicons name="add" size={size * 0.5} color={color} />
+          </ProgressRing>
+        ) : target > 1 && !done ? (
           <ProgressRing size={size} strokeWidth={4} progress={count / target} color={color} trackColor={tint}>
             <Text style={[styles.count, { color: count > 0 ? color : theme.muted }]}>
               {count}/{target}

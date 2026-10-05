@@ -10,6 +10,7 @@ const input: HabitInput = {
   categories: ['lectura'],
   timeOfDay: 'evening',
   goal: { period: 'day', count: 1 },
+  unit: null,
   days: ALL_DAYS,
   reminders: ['21:00', '08:00', '21:00'],
 };
@@ -82,11 +83,11 @@ describe('store de hábitos', () => {
     expect(s().customCategories).toHaveLength(1);
   });
 
-  it('persiste en AsyncStorage (versión 2)', async () => {
+  it('persiste en AsyncStorage (versión 3)', async () => {
     const id = s().addHabit(input);
     s().setCompletion(id, '2026-09-25', 1);
     const saved = JSON.parse((await AsyncStorage.getItem('myhabits-store'))!);
-    expect(saved.version).toBe(2);
+    expect(saved.version).toBe(3);
     expect(saved.state.completions[id]).toEqual({ '2026-09-25': 1 });
     expect(saved.state).not.toHaveProperty('hasHydrated');
   });
@@ -101,10 +102,44 @@ describe('migración desde la versión 1', () => {
     const v2 = migrate(v1, 1);
     expect(v2.habits[0]).toEqual({
       id: 'a', name: 'Leer', icon: 'book', color: '#3B82F6', createdAt: 'c', updatedAt: 'u',
-      categories: [], timeOfDay: 'anytime', goal: { period: 'day', count: 1 }, days: ALL_DAYS, reminders: [], archived: false,
+      categories: [], timeOfDay: 'anytime', goal: { period: 'day', count: 1 }, unit: null, days: ALL_DAYS, reminders: [], archived: false,
     });
     expect(v2.completions).toEqual({ a: { '2026-09-24': 1, '2026-09-25': 1 } });
     expect(v2.settings).toEqual({ showHeatmaps: true });
+  });
+});
+
+describe('migración desde la versión 2', () => {
+  it('los hábitos existentes pasan a contarse por veces', () => {
+    const v2 = { habits: [{ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 } }], completions: { a: { '2026-09-25': 3 } } };
+    const v3 = migrate(v2, 2);
+    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null });
+    expect(v3.completions).toEqual(v2.completions);
+  });
+});
+
+describe('store · hábitos cuantitativos', () => {
+  const run: HabitInput = { ...input, name: 'Correr', unit: ' km ', goal: { period: 'day', count: 5.255 } };
+
+  it('guarda la unidad recortada y la meta con 2 decimales, sin el tope de 50 veces', () => {
+    s().addHabit(run);
+    expect(s().habits[0]).toMatchObject({ unit: 'km', goal: { period: 'day', count: 5.26 } });
+    s().addHabit({ ...run, unit: 'pasos', goal: { period: 'day', count: 10000 } });
+    expect(s().habits[1].goal.count).toBe(10000);
+  });
+
+  it('una unidad vacía vuelve a contar por veces', () => {
+    s().addHabit({ ...run, unit: '   ', goal: { period: 'day', count: 2.5 } });
+    expect(s().habits[0]).toMatchObject({ unit: null, goal: { period: 'day', count: 3 } });
+  });
+
+  it('suma y resta cantidades sin errores de coma flotante y nunca baja de 0', () => {
+    const id = s().addHabit(run);
+    s().addAmount(id, '2026-09-25', 0.1);
+    s().addAmount(id, '2026-09-25', 0.2);
+    expect(s().completions[id]['2026-09-25']).toBe(0.3);
+    s().addAmount(id, '2026-09-25', -1);
+    expect(s().completions[id]).toEqual({});
   });
 });
 
