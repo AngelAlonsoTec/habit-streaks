@@ -6,9 +6,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import path from 'path';
 
+import { datePresets } from '@/components/DatePicker';
 import { buildMonths } from '@/components/Heatmap';
 import { fromKey, toKey } from '@/lib/dates';
 import { describeProgress, Habit, isDoneFor, parseAmount } from '@/lib/habit';
+import { describeDue, Objective, suggestObjectives } from '@/lib/objectives';
 import { planReminders } from '@/lib/reminders';
 import { computeStats } from '@/lib/stats';
 import { summarize } from '@/lib/summary';
@@ -18,6 +20,9 @@ import { makeHabit } from '@/testing/fixtures';
 const APP_DIR = path.resolve(__dirname, '../app');
 const at = (y: number, m: number, d: number, h = 12, min = 0) => new Date(y, m - 1, d, h, min);
 const iso = (y: number, m: number, d: number) => at(y, m, d, 9).toISOString();
+const objective = (title: string, o: Partial<Objective> = {}): Objective => ({
+  id: title, title, dueDate: null, achievedOn: null, createdAt: iso(2026, 9, 1), ...o,
+});
 
 function seed(...habits: Partial<Habit>[]) {
   useHabits.setState({ habits: habits.map((h, i) => makeHabit({ id: `h${i + 1}`, ...h })) });
@@ -232,5 +237,161 @@ describe('datos y rendimiento', () => {
     summarize(habits, completions, 'year', 0, at(2026, 10, 5));
     expect(Date.now() - start).toBeLessThan(3000);
     expect(fromKey('2026-10-05').getDay()).toBe(1);
+  });
+});
+
+describe('objetivos en la vida real', () => {
+  it('un objetivo que vence hoy pasa a vencido al cruzar la medianoche con la app abierta', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 4, 23, 58), advanceTimers: true });
+    seed({ name: 'Inglés', objectives: [objective('Examen A2', { dueDate: '2026-10-04' })] });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('Vence hoy')).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(5 * 60 * 1000);
+    });
+    expect(await screen.findByText('Plazo vencido hace 1 día')).toBeTruthy();
+  });
+
+  it('marcarlo logrado a las 23:59 lo guarda en ese día, no en el siguiente', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 4, 23, 59), advanceTimers: true });
+    seed({ name: 'Inglés', objectives: [objective('Alcanzar el A1')] });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    fireEvent.press(await screen.findByLabelText('Marcar logrado: Alcanzar el A1'));
+    expect(useHabits.getState().habits[0].objectives[0].achievedOn).toBe('2026-10-04');
+  });
+
+  it('lo marca por error y lo desmarca: no queda rastro en el resumen', () => {
+    seed({ name: 'Inglés', objectives: [objective('Alcanzar el A1')] });
+    const s = () => useHabits.getState();
+    s().setObjectiveAchieved('h1', 'Alcanzar el A1', '2026-10-05');
+    expect(summarize(s().habits, {}, 'week', 0, at(2026, 10, 5)).objectivesAchieved).toHaveLength(1);
+    s().setObjectiveAchieved('h1', 'Alcanzar el A1', null);
+    expect(summarize(s().habits, {}, 'week', 0, at(2026, 10, 5)).objectivesAchieved).toHaveLength(0);
+  });
+
+  it('cerrar el panel sin guardar o con el título vacío no crea nada', async () => {
+    seed({ name: 'Inglés' });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    fireEvent.press(await screen.findByLabelText('Añadir objetivo'));
+    fireEvent.changeText(await screen.findByLabelText('Objetivo'), 'Alcanzar el B2');
+    fireEvent.press(screen.getAllByLabelText('Cerrar')[0]); // toca fuera del panel
+    fireEvent.press(await screen.findByLabelText('Añadir objetivo'));
+    fireEvent.changeText(await screen.findByLabelText('Objetivo'), '    ');
+    fireEvent(screen.getByLabelText('Objetivo'), 'submitEditing');
+    fireEvent.press(screen.getByText('Añadir objetivo'));
+    expect(useHabits.getState().habits[0].objectives).toEqual([]);
+  });
+
+  it('elige una sugerencia y la retoca antes de guardar', async () => {
+    seed({ name: 'Aprender inglés' });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    fireEvent.press(await screen.findByLabelText('Añadir objetivo'));
+    fireEvent.press(await screen.findByText('Alcanzar el B1'));
+    fireEvent.changeText(screen.getByLabelText('Objetivo'), 'Alcanzar el B1 y aprobar el examen oficial');
+    fireEvent.press(screen.getByText('Añadir objetivo'));
+    await waitFor(() =>
+      expect(useHabits.getState().habits[0].objectives[0].title).toBe('Alcanzar el B1 y aprobar el examen oficial'),
+    );
+  });
+
+  it('editar solo el título de un objetivo vencido no le cambia la fecha', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 5, 12), advanceTimers: true });
+    seed({ name: 'Inglés', objectives: [objective('A2', { dueDate: '2026-09-01' })] });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('Plazo vencido hace 34 días')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Editar objetivo A2'));
+    fireEvent.changeText(await screen.findByLabelText('Objetivo'), 'Alcanzar el A2');
+    fireEvent.press(screen.getByText('Guardar'));
+    await waitFor(() => expect(useHabits.getState().habits[0].objectives[0]).toMatchObject({ title: 'Alcanzar el A2', dueDate: '2026-09-01' }));
+  });
+
+  it('en Hoy, un próximo objetivo vencido se avisa en la tarjeta', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 5, 12), advanceTimers: true });
+    seed({ name: 'Inglés', createdAt: iso(2026, 9, 1), objectives: [objective('Alcanzar el A1', { dueDate: '2026-09-30' })] });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText(/plazo vencido/)).toBeTruthy();
+  });
+
+  it('editar el hábito desde el asistente conserva sus objetivos', async () => {
+    seed({ name: 'Inglés', objectives: [objective('A1', { achievedOn: '2026-09-20' }), objective('A2')] });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1/edit' });
+    fireEvent.changeText(await screen.findByDisplayValue('Inglés'), 'Inglés para el trabajo');
+    fireEvent.press(screen.getByText('Guardar cambios'));
+    await waitFor(() => expect(useHabits.getState().habits[0].name).toBe('Inglés para el trabajo'));
+    expect(useHabits.getState().habits[0].objectives.map((o) => [o.title, o.achievedOn])).toEqual([['A1', '2026-09-20'], ['A2', null]]);
+  });
+
+  it('archivar y restaurar conserva los objetivos; borrar el hábito se los lleva', () => {
+    seed({ name: 'Inglés', objectives: [objective('A1'), objective('A2')] }, { name: 'Correr' });
+    const s = () => useHabits.getState();
+    s().setArchived('h1', true);
+    s().setArchived('h1', false);
+    expect(s().habits[0].objectives).toHaveLength(2);
+    s().deleteHabit('h1');
+    expect(s().habits.map((h) => h.name)).toEqual(['Correr']);
+  });
+
+  it('20 objetivos: el último no se puede bajar y el primero no se puede subir', async () => {
+    const many = Array.from({ length: 20 }, (_, i) => objective(`Hito ${i + 1}`));
+    seed({ name: 'Proyecto', objectives: many });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('0 de 20 logrados')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Editar objetivo Hito 20'));
+    fireEvent.press(await screen.findByText('Bajar'));
+    fireEvent.press(screen.getAllByLabelText('Cerrar').at(-1)!);
+    fireEvent.press(screen.getByLabelText('Editar objetivo Hito 1'));
+    fireEvent.press(await screen.findByText('Subir'));
+    const titles = useHabits.getState().habits[0].objectives.map((o) => o.title);
+    expect(titles[0]).toBe('Hito 1');
+    expect(titles[19]).toBe('Hito 20');
+  });
+
+  it('títulos raros: muy largos se recortan y con emojis o mayúsculas funcionan', () => {
+    const id = useHabits.getState().addHabit({
+      name: 'Inglés', icon: 'language', color: '#6366F1', categories: [], timeOfDay: 'anytime',
+      kind: 'build', goal: { period: 'day', count: 1 }, unit: null, days: [0, 1, 2, 3, 4, 5, 6], reminders: [],
+    });
+    useHabits.getState().addObjective(id, { title: 'x'.repeat(120), dueDate: null });
+    useHabits.getState().addObjective(id, { title: '🇬🇧 ALCANZAR EL A1', dueDate: null });
+    const [long, emoji] = useHabits.getState().habits[0].objectives;
+    expect(long.title).toHaveLength(80);
+    expect(emoji.title).toBe('🇬🇧 ALCANZAR EL A1');
+    // Ya tiene uno igual (en mayúsculas): la sugerencia del A1 no se repite.
+    const withUpper = makeHabit({ name: 'Inglés', objectives: [objective('ALCANZAR EL A1')] });
+    expect(suggestObjectives(withUpper)[0]).toBe('Alcanzar el A2');
+  });
+
+  it('atajos de fecha en días raros: 29 de febrero y 31 de diciembre', () => {
+    const leap = Object.fromEntries(datePresets('2028-02-29').map((p) => [p.label, p.key]));
+    expect(leap['En 1 año']).toBe('2029-02-28');
+    expect(leap['En 1 mes']).toBe('2028-03-29');
+    const newYearsEve = Object.fromEntries(datePresets('2026-12-31').map((p) => [p.label, p.key]));
+    expect(newYearsEve['Fin de año']).toBe('2026-12-31');
+    expect(describeDue(newYearsEve['Fin de año'], '2026-12-31').text).toBe('Vence hoy');
+    expect(newYearsEve['En 1 mes']).toBe('2027-01-31');
+  });
+
+  it('el resumen de cada mes solo cuenta lo logrado en ese mes', () => {
+    const habit = makeHabit({
+      name: 'Inglés',
+      objectives: [objective('A1', { achievedOn: '2026-09-20' }), objective('A2', { achievedOn: '2026-10-02' })],
+    });
+    expect(summarize([habit], {}, 'month', 0, at(2026, 10, 5)).objectivesAchieved.map((o) => o.title)).toEqual(['A2']);
+    expect(summarize([habit], {}, 'month', -1, at(2026, 10, 5)).objectivesAchieved.map((o) => o.title)).toEqual(['A1']);
+    expect(summarize([habit], {}, 'year', 0, at(2026, 10, 5)).objectivesAchieved).toHaveLength(2);
+  });
+
+  it('alguien que venía de la versión 4 entra al detalle y ve la tarjeta vacía', async () => {
+    await AsyncStorage.setItem('myhabits-store', JSON.stringify({
+      version: 4,
+      state: {
+        habits: [{ ...makeHabit({ id: 'v4', name: 'Leer' }), objectives: undefined }],
+        completions: {}, customCategories: [], settings: { showHeatmaps: true },
+      },
+    }));
+    await useHabits.persist.rehydrate();
+    expect(useHabits.getState().habits[0].objectives).toEqual([]);
+    renderRouter(APP_DIR, { initialUrl: '/habit/v4' });
+    expect(await screen.findByText(/márcate hitos/)).toBeTruthy();
   });
 });
