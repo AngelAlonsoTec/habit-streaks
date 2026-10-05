@@ -168,3 +168,7 @@ assets/             Iconos, pantalla de carga y favicon
 ```
 
 Las carpetas nativas `android/` e `ios/` no se versionan: Expo las genera a partir de `app.json` y de los config plugins (`npx expo prebuild`).
+
+## Licencia
+
+© 2026 AngelAlonsoTec. **Todos los derechos reservados.** Que el código sea público no da permiso para copiarlo, modificarlo ni publicarlo (tampoco en Google Play o App Store). Consulta [LICENSE](LICENSE).

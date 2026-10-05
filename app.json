@@ -8,6 +8,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.agpcr.habitstreaks",
       "icon": {
         "light": "./assets/icon.png",
         "dark": "./assets/ios-icon-dark.png",
