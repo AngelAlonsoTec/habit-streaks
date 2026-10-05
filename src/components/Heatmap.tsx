@@ -14,69 +14,86 @@ type Props = {
   isScheduled?: (date: Date) => boolean;
   /** Nivel de cada día (0-1, o -1 si se pasó del límite). Por defecto, registrado / `target`. */
   level?: (date: Date, count: number) => number;
-  /** Número fijo de semanas. Si se omite, se muestran las que quepan en el ancho. */
-  weeks?: number;
+  /** Primer día que se dibuja. Si se omite, se muestran los meses completos que quepan en el ancho. */
+  startKey?: DateKey;
   /** Tamaño de celda. Al ajustar al ancho es el mínimo: las celdas crecen para llenar la fila. */
   cellSize?: number;
   showMonthLabels?: boolean;
   showWeekdayLabels?: boolean;
-  /** Último día que se dibuja (por defecto hoy); los posteriores quedan vacíos. */
+  /** Último día que se dibuja (por defecto hoy). */
   endKey?: DateKey;
 };
 
-export type HeatmapCell = { key: DateKey; date: Date; month: number; future: boolean };
+export type HeatmapCell = { key: DateKey; date: Date };
+
+/** Un mes: sus semanas como columnas (lunes a domingo), con null en los días de otros meses o fuera del rango. */
+export type MonthBlock = { key: string; label: string; columns: (HeatmapCell | null)[][] };
 
 const WEEKDAY_LABEL_WIDTH = 16;
 const MONTH_LABEL_HEIGHT = 16;
+/** Ancho de la caja de cada etiqueta de mes. */
+const MONTH_LABEL_WIDTH = 44;
 /** Margen (en unidades del dibujo) para que bordes redondeados y el contorno de hoy no se recorten. */
 const EDGE = 1;
 /** Separación entre celdas, proporcional al tamaño de celda. */
 const GAP_RATIO = 0.27;
+/** Separación entre meses: un hueco claro en lugar de una línea divisoria. */
+const MONTH_GAP_RATIO = 0.95;
+/** Grosor del contorno de los días con el límite superado, proporcional a la celda. */
+const OVER_STROKE_RATIO = 0.16;
+/** Tope de meses al ajustar al ancho (pantallas muy anchas). */
+const MAX_FIT_MONTHS = 24;
 
-/** Semanas (de lunes a domingo) terminando en la semana de `today`, de la más antigua a la actual. */
-export function buildWeeks(count: number, today: DateKey): HeatmapCell[][] {
-  const t = fromKey(today);
-  const lastWeek = startOfWeek(t);
-  return Array.from({ length: count }, (_, w) => {
-    const start = addDays(lastWeek, -7 * (count - 1 - w));
-    return Array.from({ length: 7 }, (_, d) => {
-      const date = addDays(start, d);
-      return { key: toKey(date), date, month: date.getMonth(), future: date > t };
-    });
-  });
+/** "Oct"; en enero, con el año ("Ene 27") para ubicar el cambio de año. */
+function monthLabel(first: Date): string {
+  const m = first.getMonth();
+  return m === 0 ? `${MONTH_LABELS[m]} ${String(first.getFullYear()).slice(2)}` : MONTH_LABELS[m];
 }
 
-/** Columna en la que va la etiqueta de cada mes (la que contiene el día 1). */
-export function monthLabels(weeks: HeatmapCell[][]): { col: number; label: string }[] {
-  const labels: { col: number; label: string }[] = [];
-  weeks.forEach((week, col) => {
-    const first = week.find((c) => c.date.getDate() === 1);
-    if (first) {
-      const m = first.date.getMonth();
-      labels.push({ col, label: m === 0 ? `${MONTH_LABELS[m]} ${String(first.date.getFullYear()).slice(2)}` : MONTH_LABELS[m] });
+/** Meses entre `start` y `end` (incluidos), cada uno como un bloque de semanas. */
+export function buildMonths(start: DateKey, end: DateKey): MonthBlock[] {
+  const s = fromKey(start);
+  const e = fromKey(end);
+  const blocks: MonthBlock[] = [];
+  for (let m = new Date(s.getFullYear(), s.getMonth(), 1); m <= e; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const last = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+    const from = m < s ? s : m;
+    const to = last > e ? e : last;
+    const columns: (HeatmapCell | null)[][] = [];
+    for (let w = startOfWeek(from); w <= to; w = addDays(w, 7)) {
+      columns.push(
+        Array.from({ length: 7 }, (_, d) => {
+          const date = addDays(w, d);
+          return date < from || date > to ? null : { key: toKey(date), date };
+        }),
+      );
     }
-  });
-  return labels;
+    blocks.push({ key: toKey(m), label: monthLabel(m), columns });
+  }
+  return blocks;
 }
 
-type Segment = { x1: number; y1: number; x2: number; y2: number };
+/** Día 1 del mes que está `back` meses antes del de `end`. */
+export function monthStart(end: DateKey, back: number): DateKey {
+  const e = fromKey(end);
+  return toKey(new Date(e.getFullYear(), e.getMonth() - back, 1));
+}
 
-/**
- * Tramos de la línea escalonada que separa los meses: entre dos celdas vecinas
- * (horizontal o vertical) de meses distintos. Coordenadas en celdas; el trazo va por el hueco.
- */
-export function monthBoundaries(weeks: HeatmapCell[][]): Segment[] {
-  const segments: Segment[] = [];
-  weeks.forEach((week, c) => {
-    week.forEach((cell, d) => {
-      if (cell.future) return;
-      const left = weeks[c - 1]?.[d];
-      if (left && left.month !== cell.month) segments.push({ x1: c, y1: d, x2: c, y2: d + 1 });
-      const above = week[d - 1];
-      if (above && above.month !== cell.month) segments.push({ x1: c, y1: d, x2: c + 1, y2: d });
-    });
-  });
-  return segments;
+/** Ancho de los bloques medido en tamaños de celda: columnas, huecos entre semanas y huecos entre meses. */
+export function layoutUnits(blocks: MonthBlock[]): number {
+  const cols = blocks.reduce((n, b) => n + b.columns.length, 0);
+  return cols + (cols - blocks.length) * GAP_RATIO + Math.max(0, blocks.length - 1) * MONTH_GAP_RATIO;
+}
+
+/** Los meses completos (más el actual) que caben en `available` con celdas de al menos `minCell`. */
+export function fitMonths(available: number, minCell: number, end: DateKey): MonthBlock[] {
+  let best = buildMonths(monthStart(end, 0), end);
+  for (let back = 1; back < MAX_FIT_MONTHS; back++) {
+    const blocks = buildMonths(monthStart(end, back), end);
+    if (layoutUnits(blocks) * minCell > available) break;
+    best = blocks;
+  }
+  return best;
 }
 
 /** Color de una celda según el progreso del día (0 = vacío, 1 = completo, negativo = límite superado). */
@@ -98,7 +115,7 @@ export const Heatmap = memo(function Heatmap({
   target = 1,
   isScheduled,
   level,
-  weeks: fixedWeeks,
+  startKey,
   cellSize = 11,
   showMonthLabels = false,
   showWeekdayLabels = false,
@@ -109,51 +126,70 @@ export const Heatmap = memo(function Heatmap({
   const today = todayKey();
   const end = endKey ?? today;
   const labelWidth = showWeekdayLabels ? WEEKDAY_LABEL_WIDTH : 0;
+  const fit = startKey == null;
 
-  // Tamaño de celda y número de semanas: fijo, o el máximo que quepa llenando todo el ancho.
-  const { count, size } = useMemo(() => {
-    if (fixedWeeks != null) return { count: fixedWeeks, size: cellSize };
+  // Meses y tamaño de celda: fijos, o los meses que quepan llenando todo el ancho.
+  const { blocks, size } = useMemo(() => {
+    if (!fit) return { blocks: buildMonths(startKey, end), size: cellSize };
     const available = (width ?? 0) - labelWidth - 2 * EDGE;
     // Sin medir aún (o con ancho 0 mientras la vista está oculta) no dibujamos nada.
-    if (available < cellSize) return { count: 0, size: cellSize };
-    const n = Math.max(1, Math.floor((available + cellSize * GAP_RATIO) / (cellSize * (1 + GAP_RATIO))));
-    return { count: n, size: available / (n + (n - 1) * GAP_RATIO) };
-  }, [fixedWeeks, width, labelWidth, cellSize]);
+    if (available < cellSize) return { blocks: [], size: cellSize };
+    const fitted = fitMonths(available, cellSize, end);
+    return { blocks: fitted, size: available / layoutUnits(fitted) };
+  }, [fit, startKey, end, width, labelWidth, cellSize]);
   const gap = size * GAP_RATIO;
   const step = size + gap;
+  const monthGap = size * MONTH_GAP_RATIO;
 
-  const weeks = useMemo(() => buildWeeks(count, end), [count, end]);
+  // Posición horizontal de cada mes: sus semanas seguidas y un hueco más ancho antes del siguiente.
+  const offsets = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 0; i < blocks.length; i++) {
+      out.push(i === 0 ? 0 : out[i - 1] + blocks[i - 1].columns.length * step - gap + monthGap);
+    }
+    return out;
+  }, [blocks, step, gap, monthGap]);
 
   // Agrupamos las celdas por color: un solo <Path> por color en vez de cientos de vistas.
-  const paths = useMemo(() => {
+  // Los días en que se superó el límite van aparte: contorno rojo hueco, distinguible con cualquier color.
+  const { paths, over, todayOver } = useMemo(() => {
     const byColor = new Map<string, string[]>();
+    const overRects: string[] = [];
+    let isTodayOver = false;
     const r = Math.max(1.5, size * 0.25);
-    weeks.forEach((week, c) =>
-      week.forEach((cell, d) => {
-        if (cell.future) return;
-        const scheduled = isScheduled ? isScheduled(cell.date) : true;
-        const count = counts?.[cell.key] ?? 0;
-        const progress = level ? level(cell.date, count) : count / target;
-        const fill = cellColor(color, theme.emptyAlpha, progress, scheduled, theme.danger);
-        const list = byColor.get(fill) ?? [];
-        list.push(roundedRect(c * step, d * step, size, r));
-        byColor.set(fill, list);
-      }),
+    const inset = OVER_STROKE_RATIO * size / 2;
+    blocks.forEach((block, b) =>
+      block.columns.forEach((column, c) =>
+        column.forEach((cell, d) => {
+          if (!cell) return;
+          const scheduled = isScheduled ? isScheduled(cell.date) : true;
+          const count = counts?.[cell.key] ?? 0;
+          const progress = level ? level(cell.date, count) : count / target;
+          if (progress < 0) {
+            overRects.push(roundedRect(offsets[b] + c * step + inset, d * step + inset, size - 2 * inset, Math.max(1, r - inset)));
+            if (cell.key === today) isTodayOver = true;
+            return;
+          }
+          const fill = cellColor(color, theme.emptyAlpha, progress, scheduled);
+          const list = byColor.get(fill) ?? [];
+          list.push(roundedRect(offsets[b] + c * step, d * step, size, r));
+          byColor.set(fill, list);
+        }),
+      ),
     );
-    return [...byColor.entries()].map(([fill, rects]) => ({ fill, d: rects.join('') }));
-  }, [weeks, counts, color, target, isScheduled, level, theme.emptyAlpha, theme.danger, size, step]);
+    return {
+      paths: [...byColor.entries()].map(([fill, rects]) => ({ fill, d: rects.join('') })),
+      over: overRects.join(''),
+      todayOver: isTodayOver,
+    };
+  }, [blocks, offsets, counts, color, target, isScheduled, level, theme.emptyAlpha, today, size, step]);
 
-  const boundary = useMemo(
-    () =>
-      monthBoundaries(weeks)
-        // El trazo va por el centro del hueco; así los tramos se unen justo en las esquinas.
-        .map((s) => `M${s.x1 * step - gap / 2} ${s.y1 * step - gap / 2}L${s.x2 * step - gap / 2} ${s.y2 * step - gap / 2}`)
-        .join(''),
-    [weeks, step, gap],
-  );
-
-  // Si termina hoy, hoy está en la última semana, en la fila de su día.
-  const todayPos = count > 0 && end === today ? { c: count - 1, d: weekdayIndex(fromKey(today)) } : null;
+  const lastBlock = blocks.length - 1;
+  // Si termina hoy, hoy está en la última columna del último mes, en la fila de su día.
+  const todayPos =
+    blocks.length > 0 && end === today && !todayOver
+      ? { x: offsets[lastBlock] + (blocks[lastBlock].columns.length - 1) * step, y: weekdayIndex(fromKey(today)) * step }
+      : null;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = Math.floor(e.nativeEvent.layout.width);
@@ -161,38 +197,41 @@ export const Heatmap = memo(function Heatmap({
     if (w > 0 && w !== width) setWidth(w);
   };
 
-  const gridWidth = Math.max(0, count * step - gap);
+  const gridWidth = blocks.length ? offsets[lastBlock] + blocks[lastBlock].columns.length * step - gap : 0;
   const gridHeight = 7 * step - gap;
   const radius = Math.max(1.5, size * 0.25);
   const viewWidth = gridWidth + 2 * EDGE;
   const viewHeight = gridHeight + 2 * EDGE;
-  const fit = fixedWeeks == null;
 
   return (
-    <View onLayout={fixedWeeks == null ? onLayout : undefined}>
-      {showMonthLabels && (
+    <View onLayout={fit ? onLayout : undefined}>
+      {showMonthLabels && blocks.length > 0 && (
         <View style={{ height: MONTH_LABEL_HEIGHT, marginLeft: labelWidth + EDGE, width: gridWidth }}>
-          {monthLabels(weeks).map(({ col, label }) => (
-            <Text key={col} numberOfLines={1} style={[styles.monthLabel, { left: col * step, color: theme.muted }]}>
-              {label}
-            </Text>
-          ))}
+          {blocks.map((block, b) => {
+            const blockWidth = block.columns.length * step - gap;
+            // Un mes recién empezado ocupa muy poco: su etiqueta se alinea a su borde derecho.
+            const narrow = b === lastBlock && b > 0 && blockWidth < 26;
+            return (
+              <Text
+                key={block.key}
+                numberOfLines={1}
+                style={[
+                  styles.monthLabel,
+                  { color: theme.muted },
+                  narrow
+                    ? { left: offsets[b] + blockWidth - MONTH_LABEL_WIDTH, textAlign: 'right' }
+                    : { left: offsets[b] },
+                ]}
+              >
+                {block.label}
+              </Text>
+            );
+          })}
         </View>
       )}
       <View style={[styles.row, { minHeight: viewHeight }]}>
-        {showWeekdayLabels && (
-          <View style={{ width: labelWidth, paddingTop: EDGE }}>
-            {WEEKDAY_LABELS.map((label, i) => (
-              <Text
-                key={label}
-                style={[styles.weekdayLabel, { color: theme.muted, height: size, marginBottom: gap, lineHeight: size }]}
-              >
-                {i % 2 === 0 ? label : ''}
-              </Text>
-            ))}
-          </View>
-        )}
-        {count > 0 && (
+        {showWeekdayLabels && <WeekdayLabels cellSize={size} />}
+        {blocks.length > 0 && (
           // Al ajustar al ancho, el SVG ocupa el 100 % real y el viewBox escala el dibujo: si Android
           // redondea el ancho distinto a nuestra medida, el dibujo encoge un poco en vez de cortarse.
           <Svg
@@ -205,11 +244,11 @@ export const Heatmap = memo(function Heatmap({
             {paths.map((p) => (
               <Path key={p.fill} d={p.d} fill={p.fill} />
             ))}
-            {boundary ? <Path d={boundary} stroke={theme.border} strokeWidth={0.75} fill="none" /> : null}
+            {over ? <Path d={over} fill="none" stroke={theme.danger} strokeWidth={OVER_STROKE_RATIO * size} /> : null}
             {todayPos && (
               <Rect
-                x={todayPos.c * step + 0.75}
-                y={todayPos.d * step + 0.75}
+                x={todayPos.x + 0.75}
+                y={todayPos.y + 0.75}
                 width={size - 1.5}
                 height={size - 1.5}
                 rx={radius}
@@ -226,6 +265,27 @@ export const Heatmap = memo(function Heatmap({
 });
 
 /**
+ * Letras de los días (L, X, V, D) alineadas con las filas del heatmap. Se exporta para dejarlas fijas
+ * fuera de un ScrollView horizontal (`withMonthLabels` deja el hueco de la fila de meses).
+ */
+export function WeekdayLabels({ cellSize, withMonthLabels = false }: { cellSize: number; withMonthLabels?: boolean }) {
+  const theme = useTheme();
+  const gap = cellSize * GAP_RATIO;
+  return (
+    <View style={{ width: WEEKDAY_LABEL_WIDTH, paddingTop: EDGE + (withMonthLabels ? MONTH_LABEL_HEIGHT : 0) }}>
+      {WEEKDAY_LABELS.map((label, i) => (
+        <Text
+          key={label}
+          style={[styles.weekdayLabel, { color: theme.muted, height: cellSize, marginBottom: gap, lineHeight: cellSize }]}
+        >
+          {i % 2 === 0 ? label : ''}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/**
  * Leyenda "Menos ▢▢▢▢ Más" para hábitos con varias repeticiones al día. Al dejar un hábito
  * (`limit`), "Superado ■ ▢▢▢ Limpio": rojo si se pasó y más lleno cuanto más lejos del límite.
  */
@@ -237,7 +297,15 @@ export function HeatmapLegend({ color, limit }: { color: string; limit?: number 
     <View style={[styles.row, styles.legend]}>
       <Text style={[styles.legendText, { color: theme.muted }]}>{quit ? (limit === 0 ? 'Recaída' : 'Superado') : 'Menos'}</Text>
       {levels.map((l) => (
-        <View key={l} style={[styles.legendCell, { backgroundColor: cellColor(color, theme.emptyAlpha, l, true, theme.danger) }]} />
+        <View
+          key={l}
+          style={[
+            styles.legendCell,
+            l < 0
+              ? { borderWidth: 2, borderColor: theme.danger }
+              : { backgroundColor: cellColor(color, theme.emptyAlpha, l, true) },
+          ]}
+        />
       ))}
       <Text style={[styles.legendText, { color: theme.muted }]}>{quit ? 'Limpio' : 'Más'}</Text>
     </View>
@@ -247,7 +315,7 @@ export function HeatmapLegend({ color, limit }: { color: string; limit?: number 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   flex: { flex: 1 },
-  monthLabel: { position: 'absolute', top: 0, fontSize: 10, width: 44 },
+  monthLabel: { position: 'absolute', top: 0, fontSize: 10, fontWeight: '600', width: MONTH_LABEL_WIDTH },
   weekdayLabel: { fontSize: 9 },
   legend: { alignItems: 'center', gap: 4, alignSelf: 'flex-end' },
   legendText: { fontSize: 11 },

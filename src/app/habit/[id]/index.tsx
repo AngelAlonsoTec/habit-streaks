@@ -4,15 +4,15 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Heatmap, HeatmapLegend } from '@/components/Heatmap';
+import { Heatmap, HeatmapLegend, monthStart, WeekdayLabels } from '@/components/Heatmap';
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { RecordSheet } from '@/components/RecordSheet';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey } from '@/lib/dates';
+import { DateKey, todayKey } from '@/lib/dates';
 import {
-  dailyTarget, dayLevel, describeGoal, formatAmount, habitStart, isQuantity, isQuit, isScheduledOn, TIME_OF_DAY,
+  dailyTarget, describeGoal, formatAmount, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
 } from '@/lib/habit';
 import { confirmAction, goBack, tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
@@ -35,11 +35,7 @@ export default function HabitDetailScreen() {
 
   const stats = useMemo(() => (habit ? computeStats(habit, counts) : null), [counts, habit]);
   const isScheduled = useCallback((d: Date) => (habit ? isScheduledOn(habit, d) : true), [habit]);
-  const level = useMemo(() => {
-    if (!habit || !isQuit(habit)) return undefined;
-    const start = habitStart(habit, counts);
-    return (d: Date, c: number) => dayLevel(habit, c, d, start);
-  }, [habit, counts]);
+  const level = useMemo(() => (habit ? quitLevel(habit, counts) : undefined), [habit, counts]);
 
   if (!habit || !stats) return null;
 
@@ -143,25 +139,28 @@ export default function HabitDetailScreen() {
         </View>
 
         <Card style={styles.cardGap}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Último año</Text>
-          <ScrollView
-            ref={heatmapScroll}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            onContentSizeChange={() => heatmapScroll.current?.scrollToEnd({ animated: false })}
-          >
-            <Heatmap
-              counts={counts}
-              color={habit.color}
-              target={target}
-              isScheduled={isScheduled}
-              level={level}
-              weeks={53}
-              cellSize={13}
-              showMonthLabels
-              showWeekdayLabels
-            />
-          </ScrollView>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Últimos 12 meses</Text>
+          {/* Las letras de los días quedan fijas; solo se desplazan los meses. */}
+          <View style={styles.heatmapRow}>
+            <WeekdayLabels cellSize={13} withMonthLabels />
+            <ScrollView
+              ref={heatmapScroll}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              onContentSizeChange={() => heatmapScroll.current?.scrollToEnd({ animated: false })}
+            >
+              <Heatmap
+                counts={counts}
+                color={habit.color}
+                target={target}
+                isScheduled={isScheduled}
+                level={level}
+                startKey={monthStart(todayKey(), 11)}
+                cellSize={13}
+                showMonthLabels
+              />
+            </ScrollView>
+          </View>
           {quit ? (
             <HeatmapLegend color={habit.color} limit={habit.goal.count} />
           ) : (
@@ -231,6 +230,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12 },
   cardGap: { gap: 12 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
+  heatmapRow: { flexDirection: 'row' },
   hint: { fontSize: 12 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   action: {

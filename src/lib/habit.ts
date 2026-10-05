@@ -112,6 +112,23 @@ export function dayLevel(habit: GoalHabit, count: number, date: Date, start: Dat
   return 1 - count / (limit + 1);
 }
 
+/**
+ * Nivel de cada día de un hábito para dejar, listo para el heatmap y el calendario (undefined al
+ * generar: ahí basta con registrado / meta). Con límite semanal, los días con registros de una
+ * semana que se pasó también salen como superados.
+ */
+export function quitLevel(
+  habit: GoalHabit & Pick<Habit, 'createdAt'>,
+  days: Record<DateKey, number> | undefined,
+): ((date: Date, count: number) => number) | undefined {
+  if (!isQuit(habit)) return undefined;
+  const start = habitStart(habit, days);
+  return (date, count) => {
+    if (habit.goal.period === 'week' && count > 0 && weekCount(days, date) > habit.goal.count) return -1;
+    return dayLevel(habit, count, date, start);
+  };
+}
+
 const WEEKDAY_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export function describeDays(days: number[]): string {

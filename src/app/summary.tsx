@@ -4,9 +4,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BarChart } from '@/components/BarChart';
-import { Heatmap } from '@/components/Heatmap';
+import { Heatmap, WeekdayLabels } from '@/components/Heatmap';
 import { Card, Segmented } from '@/components/ui';
-import { daysBetween, startOfWeek, toKey, WEEKDAY_LABELS } from '@/lib/dates';
+import { toKey, WEEKDAY_LABELS } from '@/lib/dates';
 import { Period, summarize } from '@/lib/summary';
 import { useHabits } from '@/store/habits';
 import { IconName, useTheme } from '@/theme';
@@ -49,7 +49,7 @@ export default function SummaryScreen() {
 
   // Mapa de constancia (trimestre y año): intensidad = % de hábitos diarios cumplidos ese día.
   const heatmapEnd = summary.range.end < today ? summary.range.end : today;
-  const heatmapWeeks = daysBetween(startOfWeek(summary.range.start), startOfWeek(heatmapEnd)) / 7 + 1;
+  const heatmapCell = period === 'quarter' ? 17 : 12;
   const heatmapCounts = useMemo(
     () => Object.fromEntries(Object.entries(summary.dailyRates).map(([k, r]) => [k, Math.round(r * 100)])),
     [summary.dailyRates],
@@ -134,23 +134,25 @@ export default function SummaryScreen() {
           {(period === 'quarter' || period === 'year') && (
             <Card style={styles.cardGap}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>Constancia</Text>
-              <ScrollView
-                ref={heatmapScroll}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                onContentSizeChange={() => heatmapScroll.current?.scrollToEnd({ animated: false })}
-              >
-                <Heatmap
-                  counts={heatmapCounts}
-                  target={100}
-                  color={theme.primary}
-                  weeks={heatmapWeeks}
-                  endKey={toKey(heatmapEnd)}
-                  cellSize={period === 'quarter' ? 17 : 12}
-                  showMonthLabels
-                  showWeekdayLabels
-                />
-              </ScrollView>
+              <View style={styles.heatmapRow}>
+                <WeekdayLabels cellSize={heatmapCell} withMonthLabels />
+                <ScrollView
+                  ref={heatmapScroll}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  onContentSizeChange={() => heatmapScroll.current?.scrollToEnd({ animated: false })}
+                >
+                  <Heatmap
+                    counts={heatmapCounts}
+                    target={100}
+                    color={theme.primary}
+                    startKey={toKey(summary.range.start)}
+                    endKey={toKey(heatmapEnd)}
+                    cellSize={heatmapCell}
+                    showMonthLabels
+                  />
+                </ScrollView>
+              </View>
               <Text style={[styles.hint, { color: theme.muted }]}>Cada día, más intenso cuantos más hábitos cumpliste.</Text>
             </Card>
           )}
@@ -268,6 +270,7 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 11.5 },
   cardGap: { gap: 12 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
+  heatmapRow: { flexDirection: 'row' },
   hint: { fontSize: 12, lineHeight: 17, textAlign: 'center' },
   insight: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   insightText: { flex: 1, fontSize: 14, lineHeight: 20 },

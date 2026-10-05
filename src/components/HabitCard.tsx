@@ -7,7 +7,7 @@ import { CheckButton, QuitButton } from '@/components/CheckButton';
 import { Heatmap } from '@/components/Heatmap';
 import { DateKey, fromKey, todayKey } from '@/lib/dates';
 import {
-  dailyTarget, dayLevel, describeGoal, describeProgress, Habit, habitStart, isQuantity, isQuit, isScheduledOn, weekCount,
+  dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isQuit, isScheduledOn, quitLevel, weekCount,
 } from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
@@ -40,11 +40,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
   const week = weekly ? weekCount(counts, date) : 0;
   const stats = useMemo(() => computeStats(habit, counts), [habit, counts]);
   const isScheduled = useCallback((d: Date) => isScheduledOn(habit, d), [habit]);
-  const level = useMemo(() => {
-    if (!quit) return undefined;
-    const start = habitStart(habit, counts);
-    return (d: Date, c: number) => dayLevel(habit, c, d, start);
-  }, [quit, habit, counts]);
+  const level = useMemo(() => quitLevel(habit, counts), [habit, counts]);
   const when = day === todayKey() ? ' hoy' : '';
   const record = () => {
     tapFeedback();
@@ -140,7 +136,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
       {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo. */}
       {!dimmed && (
         <View style={!showHeatmap && styles.hidden}>
-          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} cellSize={10} />
+          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} cellSize={10} showMonthLabels />
         </View>
       )}
     </Pressable>

@@ -302,7 +302,7 @@ describe('flujos de la app', () => {
     seed({ name: 'Leer' });
     renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
     expect(await screen.findByText('Racha actual')).toBeTruthy();
-    expect(screen.getByText('Último año')).toBeTruthy();
+    expect(screen.getByText('Últimos 12 meses')).toBeTruthy();
     expect(screen.getByText('Tus mejores días')).toBeTruthy();
 
     const today = toKey(new Date());
@@ -333,6 +333,48 @@ describe('flujos de la app', () => {
     await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
     expect(useHabits.getState().habits[0].name).toBe('Leer 30 min');
     expect(useHabits.getState().completions.h1).toEqual({ '2026-01-01': 1 });
+  });
+
+  it('editar un hábito cuantitativo conserva la unidad y cambia la meta', async () => {
+    seed({ name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 } });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1/edit' });
+    fireEvent.press(await screen.findByLabelText('Paso 2: Frecuencia'));
+    expect(await screen.findByDisplayValue('5')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText('Meta'), '7,5');
+    fireEvent(screen.getByLabelText('Meta'), 'blur');
+    fireEvent.press(screen.getByText('Guardar cambios'));
+    await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
+    expect(useHabits.getState().habits[0]).toMatchObject({ unit: 'km', goal: { period: 'day', count: 7.5 } });
+    expect(await screen.findByText(/^7,5 km · Todos los días/)).toBeTruthy();
+  });
+
+  it('editar un hábito para dejar: sin cambiar el tipo y con el límite en 0', async () => {
+    seed({ name: 'Café', kind: 'quit', goal: { period: 'day', count: 2 } });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1/edit' });
+    expect(await screen.findByText('¿Qué hábito quieres dejar?')).toBeTruthy();
+    expect(screen.queryByText('Generar hábito')).toBeNull();
+    fireEvent.press(screen.getByLabelText('Paso 2: Límite'));
+    fireEvent.press(await screen.findByLabelText('Menos veces'));
+    fireEvent.press(screen.getByLabelText('Menos veces'));
+    fireEvent.press(screen.getByLabelText('Menos veces')); // no baja de 0
+    expect(screen.getByText('Ninguna: dejarlo del todo')).toBeTruthy();
+    fireEvent.press(screen.getByText('Guardar cambios'));
+    await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
+    expect(useHabits.getState().habits[0]).toMatchObject({ kind: 'quit', goal: { period: 'day', count: 0 } });
+  });
+
+  it('detalle de un hábito para dejar: tocar un día abre el panel y no marca nada sin querer', async () => {
+    seed({ name: 'Fumar', kind: 'quit', goal: { period: 'day', count: 0 } });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('Éxito 30 días')).toBeTruthy();
+    expect(screen.getByText('Días con recaída')).toBeTruthy();
+    const today = toKey(new Date());
+    fireEvent.press(screen.getByLabelText(today));
+    expect(useHabits.getState().completions.h1).toBeUndefined();
+    fireEvent.press(await screen.findByText('Registrar recaída'));
+    await waitFor(() => expect(useHabits.getState().completions.h1).toEqual({ [today]: 1 }));
+    fireEvent.press(screen.getByText('Quitar'));
+    await waitFor(() => expect(useHabits.getState().completions.h1).toEqual({}));
   });
 
   it('una URL de hábito inexistente no rompe la app', async () => {

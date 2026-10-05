@@ -70,9 +70,10 @@ export function MonthCalendar({ counts, color, target, unit = null, level, isSch
             const count = counts?.[key] ?? 0;
             const progress = future ? 0 : level ? level(d, count) : count / target;
             const scheduled = isScheduled(d);
+            // Límite superado: aro rojo en vez de relleno, para distinguirlo de cualquier color de hábito.
             const over = progress < 0;
-            const bg = progress !== 0 ? cellColor(color, theme.emptyAlpha, progress, true, theme.danger) : 'transparent';
-            const fg = progress >= 1 || over ? '#FFFFFF' : future || !scheduled ? theme.muted : theme.text;
+            const bg = progress > 0 ? cellColor(color, theme.emptyAlpha, progress, true) : 'transparent';
+            const fg = over ? theme.danger : progress >= 1 ? '#FFFFFF' : future || !scheduled ? theme.muted : theme.text;
             return (
               <Pressable
                 key={key}
@@ -87,6 +88,7 @@ export function MonthCalendar({ counts, color, target, unit = null, level, isSch
                     styles.circle,
                     { backgroundColor: bg },
                     key === today && { borderWidth: 2, borderColor: color },
+                    over && { borderWidth: 2, borderColor: theme.danger },
                     !scheduled && progress === 0 && !future && { opacity: 0.45 },
                   ]}
                 >

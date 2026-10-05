@@ -1,7 +1,7 @@
 import { counts, makeHabit } from '@/testing/fixtures';
 import { fromKey } from '../dates';
 import {
-  dailyTarget, dayLevel, describeGoal, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
+  dailyTarget, dayLevel, describeGoal, quitLevel, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
 } from '../habit';
 
 describe('reglas de hábito', () => {
@@ -118,6 +118,16 @@ describe('hábitos para dejar', () => {
     expect(dayLevel(smoke, 0, fromKey('2026-08-31'), start)).toBe(0);
     // Al generar el nivel es el progreso hacia la meta.
     expect(dayLevel(makeHabit({ goal: { period: 'day', count: 4 } }), 1, day, start)).toBe(0.25);
+  });
+
+  it('límite semanal: los días con registros de una semana que se pasó salen como superados', () => {
+    const fastFood = makeHabit({ kind: 'quit', goal: { period: 'week', count: 1 }, createdAt: new Date(2026, 8, 1).toISOString() });
+    const days = { '2026-09-14': 1, '2026-09-16': 1, '2026-09-22': 1 };
+    const level = quitLevel(fastFood, days)!;
+    expect(level(fromKey('2026-09-14'), 1)).toBe(-1); // semana del 14: 2 > 1
+    expect(level(fromKey('2026-09-15'), 0)).toBe(1); // ese día no hubo nada
+    expect(level(fromKey('2026-09-22'), 1)).toBe(0.5); // semana del 21: dentro del límite
+    expect(quitLevel(makeHabit(), days)).toBeUndefined();
   });
 
   it('describe el límite y el estado del día', () => {

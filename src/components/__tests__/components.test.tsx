@@ -179,7 +179,22 @@ describe('<Heatmap /> ajustado al ancho', () => {
   });
 
   it('terminando en otra fecha no marca el día de hoy', () => {
-    render(<Heatmap counts={{}} color="#39D353" weeks={5} endKey="2025-12-31" />);
+    render(<Heatmap counts={{}} color="#39D353" startKey="2025-12-01" endKey="2025-12-31" />);
     expect(screen.UNSAFE_queryAllByType(Rect)).toHaveLength(0);
+  });
+
+  it('pone el nombre de cada mes que cabe, sin líneas divisorias', () => {
+    render(<Heatmap counts={{}} color="#39D353" showMonthLabels />);
+    fireEvent(screen.root, 'layout', layout(320));
+    // Hoy es 25/9/2026: con 320 px caben varios meses completos hasta septiembre.
+    expect(screen.getByText('Sep')).toBeTruthy();
+    expect(screen.getByText('Ago')).toBeTruthy();
+    expect(screen.UNSAFE_getAllByType(Path).every((p) => p.props.stroke == null)).toBe(true);
+  });
+
+  it('con rango fijo dibuja exactamente esos meses', () => {
+    render(<Heatmap counts={{}} color="#39D353" startKey="2026-01-01" endKey="2026-03-31" showMonthLabels />);
+    expect(['Ene 26', 'Feb', 'Mar'].map((l) => screen.getByText(l))).toHaveLength(3);
+    expect(screen.queryByText('Abr')).toBeNull();
   });
 });
