@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { toKey } from '@/lib/dates';
 import { ALL_DAYS, HabitInput } from '@/lib/habit';
 import { migrate, useHabits } from '../habits';
 
@@ -84,11 +85,11 @@ describe('store de hábitos', () => {
     expect(s().customCategories).toHaveLength(1);
   });
 
-  it('persiste en AsyncStorage (versión 5)', async () => {
+  it('persiste en AsyncStorage (versión 6)', async () => {
     const id = s().addHabit(input);
     s().setCompletion(id, '2026-09-25', 1);
     const saved = JSON.parse((await AsyncStorage.getItem('myhabits-store'))!);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     expect(saved.state.completions[id]).toEqual({ '2026-09-25': 1 });
     expect(saved.state).not.toHaveProperty('hasHydrated');
   });
@@ -104,10 +105,10 @@ describe('migración desde la versión 1', () => {
     expect(v2.habits[0]).toEqual({
       id: 'a', name: 'Leer', icon: 'book', color: '#3B82F6', createdAt: 'c', updatedAt: 'u',
       categories: [], timeOfDay: 'anytime', kind: 'build', goal: { period: 'day', count: 1 }, unit: null, days: ALL_DAYS, reminders: [], archived: false,
-      objectives: [],
+      objectives: [], archivedAt: null,
     });
     expect(v2.completions).toEqual({ a: { '2026-09-24': 1, '2026-09-25': 1 } });
-    expect(v2.settings).toEqual({ showHeatmaps: true });
+    expect(v2.settings).toEqual({ showHeatmaps: true, compactTipSeen: false });
   });
 });
 
@@ -115,7 +116,7 @@ describe('migración desde la versión 2', () => {
   it('los hábitos existentes pasan a contarse por veces', () => {
     const v2 = { habits: [{ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 } }], completions: { a: { '2026-09-25': 3 } } };
     const v3 = migrate(v2, 2);
-    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null, kind: 'build', objectives: [] });
+    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null, kind: 'build', objectives: [], archivedAt: null });
     expect(v3.completions).toEqual(v2.completions);
   });
 });
@@ -123,7 +124,7 @@ describe('migración desde la versión 2', () => {
 describe('migración desde la versión 3', () => {
   it('los hábitos existentes pasan a ser para generar', () => {
     const v3 = { habits: [{ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 } }], completions: {} };
-    expect(migrate(v3, 3).habits[0]).toEqual({ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 }, kind: 'build', objectives: [] });
+    expect(migrate(v3, 3).habits[0]).toEqual({ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 }, kind: 'build', objectives: [], archivedAt: null });
   });
 });
 
@@ -173,9 +174,36 @@ describe('store · objetivos', () => {
   });
 });
 
+describe('archivar', () => {
+  it('guarda el día en que se archiva y lo borra al restaurar', () => {
+    const id = s().addHabit(input);
+    expect(s().habits[0].archivedAt).toBeNull();
+    s().setArchived(id, true);
+    expect(s().habits[0].archivedAt).toBe(toKey(new Date()));
+    s().setArchived(id, false);
+    expect(s().habits[0].archivedAt).toBeNull();
+  });
+});
+
+describe('migración desde la versión 5', () => {
+  it('los ya archivados toman como fecha su última modificación; el consejo aún no se ha visto', () => {
+    const v5 = {
+      habits: [
+        { id: 'a', archived: true, updatedAt: new Date(2026, 7, 6, 18).toISOString() },
+        { id: 'b', archived: false, updatedAt: new Date(2026, 7, 6, 18).toISOString() },
+      ],
+      completions: {},
+      settings: { showHeatmaps: false },
+    };
+    const v6 = migrate(v5, 5);
+    expect(v6.habits.map((h) => h.archivedAt)).toEqual(['2026-08-06', null]);
+    expect(v6.settings).toEqual({ showHeatmaps: false, compactTipSeen: false });
+  });
+});
+
 describe('migración desde la versión 4', () => {
   it('los hábitos existentes empiezan sin objetivos', () => {
-    expect(migrate({ habits: [{ id: 'a', kind: 'build' }], completions: {} }, 4).habits[0]).toEqual({ id: 'a', kind: 'build', objectives: [] });
+    expect(migrate({ habits: [{ id: 'a', kind: 'build' }], completions: {} }, 4).habits[0]).toEqual({ id: 'a', kind: 'build', objectives: [], archivedAt: null });
   });
 });
 
@@ -272,11 +300,12 @@ describe('store · casos límite', () => {
 describe('migración · otros casos', () => {
   it('datos ya en versión 2 se dejan igual', () => {
     const v2 = { habits: [], completions: { a: { '2026-09-25': 3 } }, customCategories: [], settings: { showHeatmaps: false } };
-    expect(migrate(v2, 2)).toEqual(v2);
+    // Solo se añade lo nuevo de versiones posteriores (el consejo de la vista compacta, sin ver).
+    expect(migrate(v2, 2)).toEqual({ ...v2, settings: { showHeatmaps: false, compactTipSeen: false } });
   });
 
   it('una versión 1 vacía no falla', () => {
-    expect(migrate({}, 1)).toEqual({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true } });
+    expect(migrate({}, 1)).toEqual({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true, compactTipSeen: false } });
   });
 
   it('un hábito v1 con campos nuevos ya presentes los respeta', () => {

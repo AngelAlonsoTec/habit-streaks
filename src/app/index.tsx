@@ -35,6 +35,8 @@ function HeaderButton({ icon, label, onPress }: { icon: IconName; label: string;
 }
 /** Espacio bajo la lista para que el botón flotante no tape la última tarjeta. */
 const FAB_SPACE = 104;
+/** A partir de cuántos hábitos se sugiere la vista compacta (una sola vez). */
+const COMPACT_TIP_MIN_HABITS = 4;
 
 /** "Viernes, 2 de octubre". */
 function fullDate(key: DateKey): string {
@@ -49,6 +51,7 @@ export default function TodayScreen() {
   const completions = useHabits((s) => s.completions);
   const customCategories = useHabits((s) => s.customCategories);
   const showHeatmaps = useHabits((s) => s.settings.showHeatmaps);
+  const compactTipSeen = useHabits((s) => s.settings.compactTipSeen);
   const updateSettings = useHabits((s) => s.updateSettings);
 
   const today = useToday();
@@ -130,7 +133,7 @@ export default function TodayScreen() {
             <HeaderButton
               icon={showHeatmaps ? 'list-outline' : 'grid-outline'}
               label={showHeatmaps ? 'Vista compacta' : 'Mostrar gráficas'}
-              onPress={() => updateSettings({ showHeatmaps: !showHeatmaps })}
+              onPress={() => updateSettings({ showHeatmaps: !showHeatmaps, compactTipSeen: true })}
             />
           )}
         </View>
@@ -193,6 +196,30 @@ export default function TodayScreen() {
                 <Ionicons name="return-down-back" size={15} color={theme.text} />
                 <Text style={[styles.backTodayText, { color: theme.text }]}>Volver a hoy</Text>
               </Pressable>
+            )}
+
+            {showHeatmaps && !compactTipSeen && habits.length >= COMPACT_TIP_MIN_HABITS && (
+              <View style={[styles.tip, { backgroundColor: theme.primary + theme.emptyAlpha, borderColor: theme.primary }]}>
+                <View style={styles.tipHeader}>
+                  <Ionicons name="bulb-outline" size={18} color={theme.primary} />
+                  <Text style={[styles.tipTitle, { color: theme.text }]}>¿Se te hace larga la lista?</Text>
+                </View>
+                <Text style={[styles.tipText, { color: theme.text }]}>
+                  Toca <Ionicons name="list-outline" size={14} color={theme.text} /> arriba para la vista compacta, sin
+                  gráficas. Además, los hábitos que completas pliegan su gráfica solos.
+                </Text>
+                <View style={styles.tipActions}>
+                  <Pressable onPress={() => updateSettings({ compactTipSeen: true })} hitSlop={6}>
+                    <Text style={[styles.tipDismiss, { color: theme.muted }]}>Entendido</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => updateSettings({ showHeatmaps: false, compactTipSeen: true })}
+                    style={({ pressed }) => [styles.tipTry, { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 }]}
+                  >
+                    <Text style={styles.tipTryText}>Probar la vista compacta</Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
 
             {usedCategories.length > 0 && (
@@ -285,6 +312,14 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 18, fontWeight: '800' },
   message: { fontSize: 13 },
   quitLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  tip: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
+  tipHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tipTitle: { fontSize: 15, fontWeight: '800' },
+  tipText: { fontSize: 13.5, lineHeight: 19 },
+  tipActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 16, marginTop: 2 },
+  tipDismiss: { fontSize: 14, fontWeight: '700' },
+  tipTry: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999 },
+  tipTryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   backToday: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
     paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999,

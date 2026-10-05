@@ -14,7 +14,7 @@ const APP_DIR = path.resolve(__dirname, '../app');
 const today = () => toKey(new Date());
 
 beforeEach(() => {
-  useHabits.setState({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true }, hasHydrated: true });
+  useHabits.setState({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true, compactTipSeen: true }, hasHydrated: true });
 });
 afterEach(() => {
   jest.restoreAllMocks();

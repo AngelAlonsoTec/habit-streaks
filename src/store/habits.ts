@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { Category } from '@/lib/categories';
-import type { DateKey } from '@/lib/dates';
+import { DateKey, todayKey, toKey } from '@/lib/dates';
 import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, MAX_AMOUNT, roundAmount, sortTimes } from '@/lib/habit';
 import { MAX_OBJECTIVE_LENGTH, Objective, ObjectiveInput } from '@/lib/objectives';
 
@@ -13,6 +13,8 @@ export type { Habit, HabitInput } from '@/lib/habit';
 type Settings = {
   /** Mostrar el heatmap en las tarjetas de la pantalla principal. */
   showHeatmaps: boolean;
+  /** Ya se vio (o se descartó) el consejo de la vista compacta. */
+  compactTipSeen: boolean;
 };
 
 type HabitsState = {
@@ -71,12 +73,14 @@ export const useHabits = create<HabitsState>()(
       habits: [],
       completions: {},
       customCategories: [],
-      settings: { showHeatmaps: true },
+      settings: { showHeatmaps: true, compactTipSeen: false },
       hasHydrated: false,
 
       addHabit: (input) => {
         const now = new Date().toISOString();
-        const habit: Habit = { ...normalize(input), id: randomUUID(), objectives: [], archived: false, createdAt: now, updatedAt: now };
+        const habit: Habit = {
+          ...normalize(input), id: randomUUID(), objectives: [], archived: false, archivedAt: null, createdAt: now, updatedAt: now,
+        };
         set((s) => ({ habits: [...s.habits, habit] }));
         return habit.id;
       },
@@ -90,7 +94,9 @@ export const useHabits = create<HabitsState>()(
 
       setArchived: (id, archived) =>
         set((s) => ({
-          habits: s.habits.map((h) => (h.id === id ? { ...h, archived, updatedAt: new Date().toISOString() } : h)),
+          habits: s.habits.map((h) =>
+            h.id === id ? { ...h, archived, archivedAt: archived ? todayKey() : null, updatedAt: new Date().toISOString() } : h,
+          ),
         })),
 
       deleteHabit: (id) =>
@@ -175,7 +181,7 @@ export const useHabits = create<HabitsState>()(
     {
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
@@ -193,7 +199,7 @@ type PersistedAny = {
   habits?: Record<string, unknown>[];
   completions?: Record<string, Record<string, number | boolean>>;
   customCategories?: Category[];
-  settings?: Settings;
+  settings?: Partial<Settings>;
 };
 
 /** Convierte datos guardados por versiones anteriores al formato actual. */
@@ -219,7 +225,7 @@ export function migrate(persisted: PersistedAny, version: number) {
       ]),
     );
     state.customCategories = [];
-    state.settings = { showHeatmaps: true };
+    state.settings = { showHeatmaps: true, compactTipSeen: false };
   }
   if (version < 3) {
     // v3: hábitos cuantitativos. Los anteriores se siguen contando por veces.
@@ -232,6 +238,14 @@ export function migrate(persisted: PersistedAny, version: number) {
   if (version < 5) {
     // v5: objetivos por hábito.
     state.habits = (state.habits ?? []).map((h) => ({ objectives: [], ...h }));
+  }
+  if (version < 6) {
+    // v6: fecha de archivo. Para los ya archivados, la última modificación es la mejor pista.
+    state.habits = (state.habits ?? []).map((h) => ({
+      archivedAt: h.archived && typeof h.updatedAt === 'string' ? toKey(new Date(h.updatedAt)) : null,
+      ...h,
+    }));
+    state.settings = { showHeatmaps: true, ...state.settings, compactTipSeen: false };
   }
   return state as unknown as Pick<HabitsState, 'habits' | 'completions' | 'customCategories' | 'settings'>;
 }

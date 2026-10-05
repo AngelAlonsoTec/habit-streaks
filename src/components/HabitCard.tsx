@@ -7,7 +7,7 @@ import { CheckButton, QuitButton } from '@/components/CheckButton';
 import { Heatmap } from '@/components/Heatmap';
 import { DateKey, fromKey } from '@/lib/dates';
 import {
-  dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isQuit, isScheduledOn, quitLevel, weekCount,
+  dailyTarget, describeGoal, describeProgress, Habit, isDoneFor, isQuantity, isQuit, isScheduledOn, quitLevel, weekCount,
 } from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
 import { describeDueShort, nextObjective } from '@/lib/objectives';
@@ -45,6 +45,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
   const isScheduled = useCallback((d: Date) => isScheduledOn(habit, d), [habit]);
   const level = useMemo(() => quitLevel(habit, counts), [habit, counts]);
   const when = day === today ? ' hoy' : '';
+  const doneForDay = !quit && isDoneFor(habit, counts, date);
   const record = () => {
     tapFeedback();
     onRecord?.(habit, day);
@@ -147,9 +148,11 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
         )}
       </View>
 
-      {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo. */}
+      {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo.
+          Al completar un hábito de los que se generan, su heatmap se pliega para acortar la lista; los de dejar
+          lo mantienen porque su heatmap es justo lo que se sigue (los días limpios). */}
       {!dimmed && (
-        <View style={!showHeatmap && styles.hidden}>
+        <View testID={`heatmap-${habit.id}`} style={(!showHeatmap || doneForDay) && styles.hidden}>
           <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} markKey={day} cellSize={10} showMonthLabels />
         </View>
       )}

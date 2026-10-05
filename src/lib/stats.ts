@@ -1,5 +1,5 @@
 import { addDays, daysBetween, DateKey, fromKey, startOfDay, startOfWeek, toKey, weekdayIndex } from './dates';
-import { habitStart, Habit, isDayComplete, isQuit, isScheduledOn, weekCount } from './habit';
+import { habitStart, Habit, isDayComplete, isQuit, isScheduledOn, trackedUntil, weekCount } from './habit';
 
 export type HabitStats = {
   /** Días (meta diaria) o semanas (meta semanal) seguidos cumpliendo (al dejar: sin pasar del límite). */
@@ -16,11 +16,14 @@ export type HabitStats = {
   overLimit: number;
 };
 
-type StatsHabit = Pick<Habit, 'kind' | 'goal' | 'unit' | 'days' | 'createdAt'>;
+type StatsHabit = Pick<Habit, 'kind' | 'goal' | 'unit' | 'days' | 'createdAt' | 'archivedAt'>;
 
 export function computeStats(habit: StatsHabit, days: Record<DateKey, number> | undefined, now = new Date()): HabitStats {
   const counts = days ?? {};
-  const today = startOfDay(now);
+  // Un hábito archivado se queda como estaba la última vez que se siguió: lo posterior no es un fallo.
+  const until = trackedUntil(habit, counts);
+  const lastTracked = until ? fromKey(until) : null;
+  const today = lastTracked && lastTracked < startOfDay(now) ? lastTracked : startOfDay(now);
   const keys = Object.keys(counts).filter((k) => counts[k] > 0).sort();
   const origin = habitStart(habit, counts);
 

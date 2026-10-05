@@ -4,14 +4,14 @@ import path from 'path';
 import { makeHabit } from '@/testing/fixtures';
 import { addDays, toKey, weekdayIndex } from '@/lib/dates';
 import { Habit } from '@/lib/habit';
-import { Alert, AlertButton, ScrollView } from 'react-native';
+import { Alert, AlertButton, ScrollView, StyleSheet } from 'react-native';
 
 import { useHabits } from '@/store/habits';
 
 const APP_DIR = path.resolve(__dirname, '../app');
 
 beforeEach(() => {
-  useHabits.setState({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true }, hasHydrated: true });
+  useHabits.setState({ habits: [], completions: {}, customCategories: [], settings: { showHeatmaps: true, compactTipSeen: true }, hasHydrated: true });
 });
 
 const next = () => fireEvent.press(screen.getByText('Siguiente'));
@@ -479,6 +479,59 @@ describe('flujos de la app', () => {
     await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
     expect(await screen.findByText(/^Archivado:/)).toBeTruthy();
     expect(screen.getByText('Restaurar')).toBeTruthy();
+  });
+
+  it('al completar un hábito su gráfica se pliega; los pendientes y los de dejar la mantienen', async () => {
+    seed({ name: 'Leer' }, { name: 'Agua', goal: { period: 'day', count: 8 } }, { name: 'Fumar', kind: 'quit', goal: { period: 'day', count: 0 } });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    const folded = (id: string) =>
+      StyleSheet.flatten(screen.getByTestId(`heatmap-${id}`, { includeHiddenElements: true }).props.style)?.display === 'none';
+    expect(await screen.findByText('Leer')).toBeTruthy();
+    expect([folded('h1'), folded('h2'), folded('h3')]).toEqual([false, false, false]);
+    fireEvent.press(screen.getByLabelText('Marcar Leer'));
+    fireEvent.press(screen.getByLabelText('Marcar Agua')); // 1 de 8: aún pendiente
+    await waitFor(() => expect(folded('h1')).toBe(true));
+    expect(folded('h2')).toBe(false);
+    expect(folded('h3')).toBe(false); // limpio pero sigue a la vista
+    fireEvent.press(screen.getByLabelText('Marcar Leer')); // desmarcar la despliega
+    await waitFor(() => expect(folded('h1')).toBe(false));
+  });
+
+  it('consejo de la vista compacta: sale una vez con 4 hábitos y se puede probar o descartar', async () => {
+    useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
+    seed({ name: 'A' }, { name: 'B' }, { name: 'C' });
+    const { unmount } = renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('A')).toBeTruthy();
+    expect(screen.queryByText('¿Se te hace larga la lista?')).toBeNull(); // con 3 aún no
+    unmount();
+
+    seed({ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('¿Se te hace larga la lista?')).toBeTruthy();
+    fireEvent.press(screen.getByText('Probar la vista compacta'));
+    await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: false, compactTipSeen: true }));
+    expect(screen.queryByText('¿Se te hace larga la lista?')).toBeNull();
+  });
+
+  it('consejo de la vista compacta: "Entendido" o usar el botón de arriba lo dan por visto', async () => {
+    useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
+    seed({ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    fireEvent.press(await screen.findByText('Entendido'));
+    await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: true, compactTipSeen: true }));
+
+    useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
+    fireEvent.press(await screen.findByLabelText('Vista compacta'));
+    await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: false, compactTipSeen: true }));
+  });
+
+  it('detalle de un archivado: fecha de archivo y racha congelada', async () => {
+    seed({ name: 'Piano', archived: true, archivedAt: '2026-08-20', createdAt: new Date(2026, 7, 1).toISOString() });
+    useHabits.setState({ completions: { h1: { '2026-08-18': 1, '2026-08-19': 1, '2026-08-20': 1 } } });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('Racha al archivar')).toBeTruthy();
+    expect(screen.getByText(/^Archivado el 20 ago/)).toBeTruthy();
+    expect(screen.getAllByText('3 días').length).toBe(2); // racha al archivar y mejor racha
   });
 
   it('una URL de hábito inexistente no rompe la app', async () => {

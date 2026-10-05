@@ -11,7 +11,7 @@ import { RecordSheet } from '@/components/RecordSheet';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey, fromKey } from '@/lib/dates';
+import { DateKey, formatShortDate, fromKey } from '@/lib/dates';
 import {
   dailyTarget, describeGoal, formatCompact, formatQuantity, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
 } from '@/lib/habit';
@@ -78,7 +78,11 @@ export default function HabitDetailScreen() {
   };
 
   const statItems = [
-    { label: 'Racha actual', value: streakLabel(stats.currentStreak, stats.streakUnit), icon: 'flame' as const },
+    {
+      label: habit.archived ? 'Racha al archivar' : 'Racha actual',
+      value: streakLabel(stats.currentStreak, stats.streakUnit),
+      icon: 'flame' as const,
+    },
     { label: 'Mejor racha', value: streakLabel(stats.bestStreak, stats.streakUnit), icon: 'trophy' as const },
     { label: quit ? 'Éxito 30 días' : 'Cumplimiento 30 días', value: `${stats.rate30}%`, icon: 'stats-chart' as const },
     quit
@@ -139,7 +143,8 @@ export default function HabitDetailScreen() {
           <View style={[styles.archived, { backgroundColor: theme.surface }]}>
             <Ionicons name="archive-outline" size={18} color={theme.muted} />
             <Text style={[styles.archivedText, { color: theme.muted }]}>
-              Archivado: no aparece en Hoy ni envía recordatorios. Puedes restaurarlo abajo.
+              {habit.archivedAt ? `Archivado el ${formatShortDate(habit.archivedAt, today)}` : 'Archivado'}: no aparece en Hoy
+              ni envía recordatorios. Sus estadísticas se quedan como la última vez que lo seguiste.
             </Text>
           </View>
         )}

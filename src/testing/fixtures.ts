@@ -20,6 +20,7 @@ export function makeHabit(overrides: Partial<Habit> = {}): Habit {
     reminders: [],
     objectives: [],
     archived: false,
+    archivedAt: null,
     createdAt: new Date(2025, 0, 1).toISOString(),
     updatedAt: new Date(2025, 0, 1).toISOString(),
     ...overrides,

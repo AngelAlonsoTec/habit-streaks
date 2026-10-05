@@ -1,4 +1,5 @@
 import { counts, makeHabit, NOW, range, TODAY } from '@/testing/fixtures';
+import { quitLevel, trackedUntil } from '../habit';
 import { computeStats } from '../stats';
 
 describe('computeStats · meta diaria todos los días', () => {
@@ -171,5 +172,32 @@ describe('estadísticas de hábitos para dejar', () => {
     const habit = makeHabit({ kind: 'quit', goal: { period: 'week', count: 1 }, createdAt: created });
     const stats = computeStats(habit, { '2026-09-14': 1, '2026-09-15': 1, '2026-09-23': 1 }, NOW);
     expect(stats).toMatchObject({ currentStreak: 1, streakUnit: 'week', overLimit: 1 });
+  });
+});
+
+describe('estadísticas de un hábito archivado', () => {
+  const created = new Date(2026, 7, 1, 9).toISOString();
+  const august = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`2026-08-${String(i + 1).padStart(2, '0')}`, 1]));
+
+  it('se quedan como estaban al archivarlo: los días posteriores no son fallos', () => {
+    const habit = makeHabit({ createdAt: created, archived: true, archivedAt: '2026-08-20' });
+    const later = computeStats(habit, august, NOW); // 25/9, más de un mes después
+    expect(later).toMatchObject({ currentStreak: 20, bestStreak: 20, rate30: 100 });
+    // Sin la fecha de archivo, el mes sin registros hundiría el cumplimiento y la racha.
+    expect(computeStats({ ...habit, archivedAt: null }, august, NOW)).toMatchObject({ currentStreak: 0, rate30: 0 });
+  });
+
+  it('si se registró algo después de archivarlo, se congela en ese último registro', () => {
+    const habit = makeHabit({ createdAt: created, archived: true, archivedAt: '2026-08-10' });
+    expect(trackedUntil(habit, august)).toBe('2026-08-20');
+    expect(computeStats(habit, august, NOW).currentStreak).toBe(20);
+  });
+
+  it('al dejar un hábito, archivarlo no sigue sumando días limpios', () => {
+    const quit = makeHabit({ kind: 'quit', goal: { period: 'day', count: 0 }, createdAt: created, archived: true, archivedAt: '2026-08-10' });
+    expect(computeStats(quit, {}, NOW).currentStreak).toBe(10);
+    const level = quitLevel(quit, {})!;
+    expect(level(new Date(2026, 7, 10), 0)).toBe(1);
+    expect(level(new Date(2026, 7, 11), 0)).toBe(0); // ya archivado: nada que pintar
   });
 });
