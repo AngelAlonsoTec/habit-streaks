@@ -135,6 +135,52 @@ describe('flujos de la app', () => {
     expect(await screen.findByText('3 / 7,5 km hoy')).toBeTruthy();
   });
 
+  it('crea un hábito para dejar desde una sugerencia y registra una recaída', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/habit/new' });
+    fireEvent.press(await screen.findByText('Dejar hábito'));
+    expect(screen.getByText('¿Qué hábito quieres dejar?')).toBeTruthy();
+    fireEvent.press(screen.getByText('Dejar de fumar'));
+    next();
+    expect(await screen.findByText('¿Cuál es tu límite?')).toBeTruthy();
+    expect(screen.getByText('Ninguna: dejarlo del todo')).toBeTruthy();
+    next();
+    expect(screen.queryByText('Momento del día')).toBeNull();
+    next();
+    fireEvent.press(screen.getByText('Crear hábito'));
+    await waitFor(() => expect(screen).toHavePathname('/'));
+
+    const [habit] = useHabits.getState().habits;
+    expect(habit).toMatchObject({ name: 'Dejar de fumar', kind: 'quit', goal: { period: 'day', count: 0 }, unit: null });
+    expect(await screen.findByText('Sin recaídas hoy')).toBeTruthy();
+    expect(screen.getByText('Dejar')).toBeTruthy();
+    expect(screen.getByText('1 de 1 dentro del límite')).toBeTruthy();
+    expect(screen.getByText('Sin hábitos por hacer este día')).toBeTruthy();
+
+    // Tocar no registra nada directamente: abre el panel.
+    fireEvent.press(screen.getByLabelText('Registrar Dejar de fumar'));
+    fireEvent.press(await screen.findByText('Registrar recaída'));
+    await waitFor(() => expect(Object.values(useHabits.getState().completions[habit.id])).toEqual([1]));
+    fireEvent.press(screen.getAllByLabelText('Cerrar').at(-1)!);
+    expect(await screen.findByText('1 recaída hoy')).toBeTruthy();
+    expect(screen.getByText('0 de 1 dentro del límite')).toBeTruthy();
+  });
+
+  it('hábito para dejar con límite: se ajusta en el asistente', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/habit/new' });
+    fireEvent.press(await screen.findByText('Dejar hábito'));
+    fireEvent.changeText(screen.getByPlaceholderText('Nombre del hábito'), 'Café');
+    next();
+    fireEvent.press(await screen.findByLabelText('Más veces'));
+    fireEvent.press(screen.getByLabelText('Más veces'));
+    expect(screen.getByText('veces al día como máximo')).toBeTruthy();
+    next();
+    next();
+    fireEvent.press(screen.getByText('Crear hábito'));
+    await waitFor(() => expect(screen).toHavePathname('/'));
+    expect(useHabits.getState().habits[0]).toMatchObject({ kind: 'quit', goal: { period: 'day', count: 2 } });
+    expect(await screen.findByText('0 / máx. 2 hoy')).toBeTruthy();
+  });
+
   it('una unidad propia en un hábito cuantitativo semanal', async () => {
     renderRouter(APP_DIR, { initialUrl: '/habit/new' });
     fireEvent.changeText(await screen.findByPlaceholderText('Nombre del hábito'), 'Novela');

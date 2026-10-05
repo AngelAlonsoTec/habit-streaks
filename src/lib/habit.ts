@@ -1,9 +1,15 @@
 import type { IconName } from '@/theme';
-import { addDays, DateKey, startOfWeek, toKey, weekdayIndex } from './dates';
+import { addDays, DateKey, fromKey, startOfDay, startOfWeek, toKey, weekdayIndex } from './dates';
 
 export type TimeOfDay = 'anytime' | 'morning' | 'afternoon' | 'evening';
 
-/** Meta: `count` veces (o cantidad de `unit`) por día o por semana. */
+/** Generar un hábito (llegar a una meta) o dejarlo (no pasar de un límite). */
+export type HabitKind = 'build' | 'quit';
+
+/**
+ * `count` veces (o cantidad de `unit`) por día o por semana. Al generar es la meta mínima;
+ * al dejar, el máximo permitido (0 = dejarlo del todo).
+ */
 export type Goal = { period: 'day' | 'week'; count: number };
 
 export type Habit = {
@@ -14,6 +20,7 @@ export type Habit = {
   /** Ids de categoría (predefinidas o personalizadas). */
   categories: string[];
   timeOfDay: TimeOfDay;
+  kind: HabitKind;
   goal: Goal;
   /** Unidad de los hábitos cuantitativos (km, min, páginas…). null = se cuentan veces, un toque cada una. */
   unit: string | null;
@@ -28,7 +35,7 @@ export type Habit = {
 
 export type HabitInput = Pick<
   Habit,
-  'name' | 'icon' | 'color' | 'categories' | 'timeOfDay' | 'goal' | 'unit' | 'days' | 'reminders'
+  'name' | 'icon' | 'color' | 'categories' | 'timeOfDay' | 'kind' | 'goal' | 'unit' | 'days' | 'reminders'
 >;
 
 /** habitId -> { 'YYYY-MM-DD': veces completado (o cantidad registrada) ese día } */
@@ -36,8 +43,23 @@ export type Completions = Record<string, Record<DateKey, number>>;
 
 export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
+/** Lo que necesitan las reglas de cumplimiento. */
+type GoalHabit = Pick<Habit, 'kind' | 'goal' | 'unit'>;
+
 export function isQuantity(habit: Pick<Habit, 'unit'>): boolean {
   return habit.unit != null;
+}
+
+export function isQuit(habit: Pick<Habit, 'kind'>): boolean {
+  return habit.kind === 'quit';
+}
+
+/** Primer día desde el que cuenta un hábito: su creación o su primer registro, lo que sea antes. */
+export function habitStart(habit: Pick<Habit, 'createdAt'>, days: Record<DateKey, number> | undefined): Date {
+  const created = startOfDay(new Date(habit.createdAt));
+  const keys = Object.keys(days ?? {}).filter((k) => (days?.[k] ?? 0) > 0).sort();
+  const first = keys.length ? fromKey(keys[0]) : created;
+  return first < created ? first : created;
 }
 
 export function isScheduledOn(habit: Pick<Habit, 'goal' | 'days'>, date: Date): boolean {
@@ -45,7 +67,7 @@ export function isScheduledOn(habit: Pick<Habit, 'goal' | 'days'>, date: Date): 
 }
 
 /**
- * Cantidad que da un día por completo (intensidad máxima en heatmap y calendario).
+ * Cantidad que da un día por completo (intensidad máxima en heatmap y calendario) al generar.
  * En metas semanales por veces basta con hacerlo una vez; por cantidad, ir al ritmo de la meta (1/7).
  */
 export function dailyTarget(habit: Pick<Habit, 'goal' | 'unit'>): number {
@@ -53,7 +75,9 @@ export function dailyTarget(habit: Pick<Habit, 'goal' | 'unit'>): number {
   return isQuantity(habit) ? habit.goal.count / 7 : 1;
 }
 
-export function isDayComplete(habit: Pick<Habit, 'goal' | 'unit'>, count: number | undefined): boolean {
+/** ¿Día logrado? Al generar, llegar a la meta; al dejar, no pasar del límite (un día sin registros cuenta). */
+export function isDayComplete(habit: GoalHabit, count: number | undefined): boolean {
+  if (isQuit(habit)) return (count ?? 0) <= habit.goal.count;
   return (count ?? 0) >= dailyTarget(habit);
 }
 
@@ -66,10 +90,26 @@ export function weekCount(days: Record<DateKey, number> | undefined, date: Date)
   return total;
 }
 
-/** ¿Ya no hace falta hacer nada más en este día? (meta diaria cumplida o semanal ya alcanzada). */
-export function isDoneFor(habit: Pick<Habit, 'goal' | 'unit'>, days: Record<DateKey, number> | undefined, date: Date): boolean {
-  if (habit.goal.period === 'week') return weekCount(days, date) >= habit.goal.count;
+/**
+ * Al generar: ¿ya no hace falta hacer nada más ese día? (meta diaria o semanal alcanzada).
+ * Al dejar: ¿sigue dentro del límite del día (o de la semana)?
+ */
+export function isDoneFor(habit: GoalHabit, days: Record<DateKey, number> | undefined, date: Date): boolean {
+  if (habit.goal.period === 'week') {
+    const week = weekCount(days, date);
+    return isQuit(habit) ? week <= habit.goal.count : week >= habit.goal.count;
+  }
   return isDayComplete(habit, days?.[toKey(date)]);
+}
+
+/** Nivel de una celda del heatmap o del calendario: 0 vacío … 1 completo; -1 = límite superado (al dejar). */
+export function dayLevel(habit: GoalHabit, count: number, date: Date, start: Date): number {
+  if (!isQuit(habit)) return count / dailyTarget(habit);
+  if (date < start) return 0;
+  const limit = habit.goal.count;
+  if (count > limit) return -1;
+  // Más lleno cuanto más lejos del límite: 0 de 2 → 1, 1 de 2 → 0,67, 2 de 2 → 0,33.
+  return 1 - count / (limit + 1);
 }
 
 const WEEKDAY_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -82,8 +122,14 @@ export function describeDays(days: number[]): string {
   return sorted.map((d) => WEEKDAY_SHORT[d]).join(' ');
 }
 
-export function describeGoal(habit: Pick<Habit, 'goal' | 'unit' | 'days'>): string {
+export function describeGoal(habit: Pick<Habit, 'kind' | 'goal' | 'unit' | 'days'>): string {
   const { period, count } = habit.goal;
+  const days = period === 'week' ? '' : ` · ${describeDays(habit.days)}`;
+  if (isQuit(habit)) {
+    if (count === 0) return `Sin recaídas${days}`;
+    const limit = habit.unit != null ? `${formatAmount(count)} ${habit.unit}` : `${count} ${count === 1 ? 'vez' : 'veces'}`;
+    return `Máx. ${limit} ${period === 'week' ? 'por semana' : 'al día'}${days}`;
+  }
   if (habit.unit != null) {
     const amount = `${formatAmount(count)} ${habit.unit}`;
     return period === 'week' ? `${amount} por semana` : `${amount} · ${describeDays(habit.days)}`;
@@ -93,10 +139,18 @@ export function describeGoal(habit: Pick<Habit, 'goal' | 'unit' | 'days'>): stri
   return times + describeDays(habit.days);
 }
 
-/** Lo registrado frente a la meta: "3,2 / 5 km", "2/8". */
-export function describeProgress(habit: Pick<Habit, 'unit'>, value: number, target: number): string {
+/** Lo registrado frente a la meta o el límite: "3,2 / 5 km", "2/8", "1 / máx. 2", "Sin recaídas". */
+export function describeProgress(habit: Pick<Habit, 'kind' | 'unit'>, value: number, target: number): string {
+  const unit = habit.unit != null ? ` ${habit.unit}` : '';
+  if (isQuit(habit)) {
+    if (target === 0) {
+      if (value === 0) return 'Sin recaídas';
+      return habit.unit != null ? `${formatAmount(value)}${unit}` : `${value} ${value === 1 ? 'recaída' : 'recaídas'}`;
+    }
+    return `${formatAmount(value)} / máx. ${formatAmount(target)}${unit}`;
+  }
   if (habit.unit == null) return `${value}/${target}`;
-  return `${formatAmount(value)} / ${formatAmount(target)} ${habit.unit}`;
+  return `${formatAmount(value)} / ${formatAmount(target)}${unit}`;
 }
 
 // ---- Cantidades ----

@@ -70,6 +70,17 @@ describe('summarize', () => {
     expect(s.elapsedDays).toBe(5);
   });
 
+  it('al dejar: los días sin registros cuentan, pasarse hoy ya es fallo y las recaídas no suman veces', () => {
+    const smoke = makeHabit({ id: 'smoke', name: 'Fumar', kind: 'quit', goal: { period: 'day', count: 0 } });
+    const clean = summarize([smoke], {}, 'week', 0, NOW);
+    expect(clean.habits[0]).toMatchObject({ scheduled: 5, done: 5 }); // lunes a viernes, hoy incluido
+    const slipped = summarize([smoke], { smoke: { '2026-09-22': 1, '2026-09-25': 2 } }, 'week', 0, NOW);
+    expect(slipped.habits[0]).toMatchObject({ scheduled: 5, done: 3 });
+    expect(slipped.completions).toBe(0);
+    expect(slipped.activeDays).toBe(0);
+    expect(slipped.perfectDays).toBe(3);
+  });
+
   it('las cantidades no inflan las veces: un día con registro cuenta una vez', () => {
     const steps = makeHabit({ id: 'steps', name: 'Caminar', unit: 'pasos', goal: { period: 'day', count: 10000 } });
     const s = summarize([steps], { steps: { '2026-09-21': 12000, '2026-09-22': 4000 } }, 'week', 0, NOW);

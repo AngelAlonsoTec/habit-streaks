@@ -1,9 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { WEEKDAY_LABELS } from '@/lib/dates';
+import { formatAmount } from '@/lib/habit';
 import { useTheme } from '@/theme';
 
-/** Barras con las veces completado por día de la semana. */
+/** Barras con las veces completado (o la cantidad registrada) por día de la semana. */
 export function WeekdayChart({ counts, color }: { counts: number[]; color: string }) {
   const theme = useTheme();
   const max = Math.max(...counts, 1);
@@ -12,7 +13,7 @@ export function WeekdayChart({ counts, color }: { counts: number[]; color: strin
     <View style={styles.row}>
       {counts.map((c, i) => (
         <View key={WEEKDAY_LABELS[i]} style={styles.col}>
-          <Text style={[styles.value, { color: theme.muted }]}>{c}</Text>
+          <Text style={[styles.value, { color: theme.muted }]} numberOfLines={1}>{formatAmount(c)}</Text>
           <View style={[styles.track, { backgroundColor: color + theme.emptyAlpha }]}>
             <View style={[styles.bar, { height: `${(c / max) * 100}%`, backgroundColor: color, opacity: i === best && c > 0 ? 1 : 0.7 }]} />
           </View>

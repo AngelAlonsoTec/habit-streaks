@@ -9,6 +9,7 @@ const input: HabitInput = {
   color: '#3B82F6',
   categories: ['lectura'],
   timeOfDay: 'evening',
+  kind: 'build',
   goal: { period: 'day', count: 1 },
   unit: null,
   days: ALL_DAYS,
@@ -83,11 +84,11 @@ describe('store de hábitos', () => {
     expect(s().customCategories).toHaveLength(1);
   });
 
-  it('persiste en AsyncStorage (versión 3)', async () => {
+  it('persiste en AsyncStorage (versión 4)', async () => {
     const id = s().addHabit(input);
     s().setCompletion(id, '2026-09-25', 1);
     const saved = JSON.parse((await AsyncStorage.getItem('myhabits-store'))!);
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     expect(saved.state.completions[id]).toEqual({ '2026-09-25': 1 });
     expect(saved.state).not.toHaveProperty('hasHydrated');
   });
@@ -102,7 +103,7 @@ describe('migración desde la versión 1', () => {
     const v2 = migrate(v1, 1);
     expect(v2.habits[0]).toEqual({
       id: 'a', name: 'Leer', icon: 'book', color: '#3B82F6', createdAt: 'c', updatedAt: 'u',
-      categories: [], timeOfDay: 'anytime', goal: { period: 'day', count: 1 }, unit: null, days: ALL_DAYS, reminders: [], archived: false,
+      categories: [], timeOfDay: 'anytime', kind: 'build', goal: { period: 'day', count: 1 }, unit: null, days: ALL_DAYS, reminders: [], archived: false,
     });
     expect(v2.completions).toEqual({ a: { '2026-09-24': 1, '2026-09-25': 1 } });
     expect(v2.settings).toEqual({ showHeatmaps: true });
@@ -113,8 +114,30 @@ describe('migración desde la versión 2', () => {
   it('los hábitos existentes pasan a contarse por veces', () => {
     const v2 = { habits: [{ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 } }], completions: { a: { '2026-09-25': 3 } } };
     const v3 = migrate(v2, 2);
-    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null });
+    expect(v3.habits[0]).toEqual({ id: 'a', name: 'Agua', goal: { period: 'day', count: 8 }, unit: null, kind: 'build' });
     expect(v3.completions).toEqual(v2.completions);
+  });
+});
+
+describe('migración desde la versión 3', () => {
+  it('los hábitos existentes pasan a ser para generar', () => {
+    const v3 = { habits: [{ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 } }], completions: {} };
+    expect(migrate(v3, 3).habits[0]).toEqual({ id: 'a', name: 'Correr', unit: 'km', goal: { period: 'day', count: 5 }, kind: 'build' });
+  });
+});
+
+describe('store · hábitos para dejar', () => {
+  it('el límite puede ser 0 (dejarlo del todo); al generar la meta mínima sigue siendo 1', () => {
+    s().addHabit({ ...input, name: 'Fumar', kind: 'quit', goal: { period: 'day', count: 0 } });
+    expect(s().habits[0]).toMatchObject({ kind: 'quit', goal: { period: 'day', count: 0 } });
+    s().addHabit({ ...input, goal: { period: 'day', count: 0 } });
+    expect(s().habits[1]).toMatchObject({ kind: 'build', goal: { period: 'day', count: 1 } });
+  });
+
+  it('límite por cantidad con decimales y sin bajar de 0', () => {
+    s().addHabit({ ...input, kind: 'quit', unit: 'h', goal: { period: 'day', count: 1.5 } });
+    s().addHabit({ ...input, kind: 'quit', unit: 'h', goal: { period: 'day', count: -2 } });
+    expect(s().habits.map((h) => h.goal.count)).toEqual([1.5, 0]);
   });
 });
 

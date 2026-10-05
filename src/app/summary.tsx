@@ -185,7 +185,9 @@ export default function SummaryScreen() {
                   <Text style={[styles.habitMeta, { color: theme.muted }]}>
                     {scheduled === 0
                       ? 'No tocaba en este periodo'
-                      : `${formatCount(done)} de ${scheduled} ${habit.goal.period === 'week' ? (scheduled === 1 ? 'semana' : 'semanas') : 'veces'}`}
+                      : `${formatCount(done)} de ${scheduled} ${
+                        habit.goal.period === 'week' ? (scheduled === 1 ? 'semana' : 'semanas') : scheduled === 1 ? 'día' : 'días'
+                      }`}
                   </Text>
                 </View>
               </View>

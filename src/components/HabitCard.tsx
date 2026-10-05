@@ -3,10 +3,12 @@ import { router } from 'expo-router';
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CheckButton } from '@/components/CheckButton';
+import { CheckButton, QuitButton } from '@/components/CheckButton';
 import { Heatmap } from '@/components/Heatmap';
 import { DateKey, fromKey, todayKey } from '@/lib/dates';
-import { dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isScheduledOn, weekCount } from '@/lib/habit';
+import {
+  dailyTarget, dayLevel, describeGoal, describeProgress, Habit, habitStart, isQuantity, isQuit, isScheduledOn, weekCount,
+} from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
 import { useHabits } from '@/store/habits';
@@ -19,11 +21,11 @@ type Props = {
   showHeatmap: boolean;
   dimmed?: boolean;
   onLongPress?: (habit: Habit) => void;
-  /** Abre el panel de cantidades (hábitos cuantitativos). */
-  onLogAmount?: (habit: Habit, day: DateKey) => void;
+  /** Abre el panel de registro (cantidades y hábitos para dejar). */
+  onRecord?: (habit: Habit, day: DateKey) => void;
 };
 
-export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimmed, onLongPress, onLogAmount }: Props) {
+export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimmed, onLongPress, onRecord }: Props) {
   const theme = useTheme();
   const counts = useHabits((s) => s.completions[habit.id]);
   const cycleCompletion = useHabits((s) => s.cycleCompletion);
@@ -33,16 +35,26 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
   const count = counts?.[day] ?? 0;
   const weekly = habit.goal.period === 'week';
   const quantity = isQuantity(habit);
+  const quit = isQuit(habit);
   const target = dailyTarget(habit);
   const week = weekly ? weekCount(counts, date) : 0;
   const stats = useMemo(() => computeStats(habit, counts), [habit, counts]);
   const isScheduled = useCallback((d: Date) => isScheduledOn(habit, d), [habit]);
+  const level = useMemo(() => {
+    if (!quit) return undefined;
+    const start = habitStart(habit, counts);
+    return (d: Date, c: number) => dayLevel(habit, c, d, start);
+  }, [quit, habit, counts]);
   const when = day === todayKey() ? ' hoy' : '';
+  const record = () => {
+    tapFeedback();
+    onRecord?.(habit, day);
+  };
 
   const detail = weekly
     ? `${describeProgress(habit, week, habit.goal.count)} esta semana`
-    : quantity
-      ? describeProgress(habit, count, target) + when
+    : quit || quantity
+      ? describeProgress(habit, count, quit ? habit.goal.count : target) + when
       : target > 1
         ? `${Math.min(count, target)}/${target}${when}`
         : describeGoal(habit);
@@ -89,17 +101,23 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
             )}
           </View>
         </View>
-        {quantity ? (
+        {quit ? (
+          <QuitButton
+            quantity={quantity}
+            count={weekly ? week : count}
+            limit={habit.goal.count}
+            color={habit.color}
+            accessibilityLabel={`Registrar ${habit.name}`}
+            onPress={record}
+          />
+        ) : quantity ? (
           <CheckButton
             quantity
             count={weekly ? week : count}
             target={weekly ? habit.goal.count : target}
             color={habit.color}
             accessibilityLabel={`Registrar ${habit.name}`}
-            onPress={() => {
-              tapFeedback();
-              onLogAmount?.(habit, day);
-            }}
+            onPress={record}
           />
         ) : (
           <CheckButton
@@ -122,7 +140,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
       {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo. */}
       {!dimmed && (
         <View style={!showHeatmap && styles.hidden}>
-          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} cellSize={10} />
+          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} cellSize={10} />
         </View>
       )}
     </Pressable>

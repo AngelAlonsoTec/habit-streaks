@@ -38,13 +38,17 @@ export const MAX_GOAL = 50;
 export const MAX_UNIT_LENGTH = 12;
 
 function normalize(input: HabitInput): HabitInput {
+  const kind = input.kind === 'quit' ? 'quit' : 'build';
   const unit = input.unit?.trim().slice(0, MAX_UNIT_LENGTH) || null;
+  // Al dejar un hábito el límite puede ser 0 (dejarlo del todo); al generarlo hace falta una meta.
+  const min = kind === 'quit' ? 0 : unit ? 0.01 : 1;
   const count = unit
-    ? Math.min(Math.max(0.01, roundAmount(input.goal.count)), MAX_AMOUNT)
-    : Math.min(Math.max(1, Math.round(input.goal.count)), MAX_GOAL);
+    ? Math.min(Math.max(min, roundAmount(input.goal.count)), MAX_AMOUNT)
+    : Math.min(Math.max(min, Math.round(input.goal.count)), MAX_GOAL);
   return {
     ...input,
     name: input.name.trim(),
+    kind,
     unit,
     goal: { period: input.goal.period, count },
     days: input.days.length ? [...new Set(input.days)].sort() : ALL_DAYS,
@@ -122,7 +126,7 @@ export const useHabits = create<HabitsState>()(
     {
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
@@ -166,6 +170,10 @@ export function migrate(persisted: PersistedAny, version: number) {
   if (version < 3) {
     // v3: hábitos cuantitativos. Los anteriores se siguen contando por veces.
     state.habits = (state.habits ?? []).map((h) => ({ unit: null, ...h }));
+  }
+  if (version < 4) {
+    // v4: hábitos para dejar. Todos los anteriores son para generar.
+    state.habits = (state.habits ?? []).map((h) => ({ kind: 'build', ...h }));
   }
   return state as unknown as Pick<HabitsState, 'habits' | 'completions' | 'customCategories' | 'settings'>;
 }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ProgressRing } from '@/components/ProgressRing';
 import { useTheme } from '@/theme';
@@ -76,3 +76,52 @@ const styles = StyleSheet.create({
   box: { alignItems: 'center', justifyContent: 'center' },
   count: { fontSize: 13, fontWeight: '800' },
 });
+
+type QuitProps = {
+  /** Registrado en el día (o en la semana, si el límite es semanal). */
+  count: number;
+  limit: number;
+  color: string;
+  /** Hábito cuantitativo: en el anillo va un escudo en vez de "1/2". */
+  quantity?: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
+  size?: number;
+};
+
+/** Estado de un hábito para dejar: escudo si vas limpio, anillo si te acercas al límite, rojo si lo pasaste. */
+export function QuitButton({ count, limit, color, quantity, onPress, accessibilityLabel, size = 46 }: QuitProps) {
+  const theme = useTheme();
+  const over = count > limit;
+  const tint = color + theme.emptyAlpha;
+  const box = { width: size, height: size, borderRadius: size * 0.3 };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityState={{ checked: !over }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Toca para registrar o corregir."
+    >
+      {over ? (
+        <View style={[styles.box, box, { backgroundColor: theme.danger }]}>
+          <Ionicons name="alert" size={size * 0.55} color="#FFFFFF" />
+        </View>
+      ) : count === 0 ? (
+        <View style={[styles.box, box, { backgroundColor: tint }]}>
+          <Ionicons name="shield-checkmark" size={size * 0.5} color={color} />
+        </View>
+      ) : (
+        <ProgressRing size={size} strokeWidth={4} progress={count / limit} color={color} trackColor={tint}>
+          {quantity ? (
+            <Ionicons name="shield-half" size={size * 0.42} color={color} />
+          ) : (
+            <Text style={[styles.count, { color }]}>{count}/{limit}</Text>
+          )}
+        </ProgressRing>
+      )}
+    </Pressable>
+  );
+}

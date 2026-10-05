@@ -1,8 +1,8 @@
 import { addDays, daysBetween, DateKey, fromKey, startOfDay, startOfWeek, toKey, weekdayIndex } from './dates';
-import { Habit, isDayComplete, isScheduledOn, weekCount } from './habit';
+import { habitStart, Habit, isDayComplete, isQuit, isScheduledOn, weekCount } from './habit';
 
 export type HabitStats = {
-  /** Días (meta diaria) o semanas (meta semanal) seguidos cumpliendo. */
+  /** Días (meta diaria) o semanas (meta semanal) seguidos cumpliendo (al dejar: sin pasar del límite). */
   currentStreak: number;
   bestStreak: number;
   streakUnit: 'day' | 'week';
@@ -12,17 +12,17 @@ export type HabitStats = {
   rate30: number;
   /** Veces completado por día de la semana (0 = lunes). */
   weekdayCounts: number[];
+  /** Al dejar un hábito: días (o semanas) en que se pasó del límite. */
+  overLimit: number;
 };
 
-type StatsHabit = Pick<Habit, 'goal' | 'unit' | 'days' | 'createdAt'>;
+type StatsHabit = Pick<Habit, 'kind' | 'goal' | 'unit' | 'days' | 'createdAt'>;
 
 export function computeStats(habit: StatsHabit, days: Record<DateKey, number> | undefined, now = new Date()): HabitStats {
   const counts = days ?? {};
   const today = startOfDay(now);
   const keys = Object.keys(counts).filter((k) => counts[k] > 0).sort();
-  const created = startOfDay(new Date(habit.createdAt));
-  const firstDone = keys.length ? fromKey(keys[0]) : created;
-  const origin = firstDone < created ? firstDone : created;
+  const origin = habitStart(habit, counts);
 
   let total = 0;
   const weekdayCounts = [0, 0, 0, 0, 0, 0, 0];
@@ -33,7 +33,7 @@ export function computeStats(habit: StatsHabit, days: Record<DateKey, number> | 
 
   const windowStart = daysBetween(origin, today) >= 29 ? addDays(today, -29) : origin;
   const streaks = habit.goal.period === 'week'
-    ? weeklyStreaks(habit.goal.count, counts, origin, today, windowStart)
+    ? weeklyStreaks(habit, counts, origin, today, windowStart)
     : dailyStreaks(habit, counts, origin, today, windowStart);
 
   return { ...streaks, total, weekdayCounts };
@@ -44,16 +44,20 @@ function dailyStreaks(habit: StatsHabit, counts: Record<DateKey, number>, origin
   let best = 0;
   let scheduled = 0;
   let completed = 0;
+  let overLimit = 0;
+  const quit = isQuit(habit);
   const span = daysBetween(origin, today);
   for (let i = 0; i <= span; i++) {
     const d = addDays(origin, i);
     if (!isScheduledOn(habit, d)) continue;
     const done = isDayComplete(habit, counts[toKey(d)]);
-    const isToday = i === span;
+    // Al generar, hoy sin hacer aún no es un fallo; al dejar, pasarse hoy ya lo es.
+    const settled = done || i !== span || quit;
     if (done) run++;
-    else if (!isToday) run = 0; // hoy aún no cuenta como fallo
+    else if (settled) run = 0;
+    if (quit && !done) overLimit++;
     best = Math.max(best, run);
-    if (d >= windowStart && (done || !isToday)) {
+    if (d >= windowStart && settled) {
       scheduled++;
       if (done) completed++;
     }
@@ -63,25 +67,30 @@ function dailyStreaks(habit: StatsHabit, counts: Record<DateKey, number>, origin
     bestStreak: best,
     streakUnit: 'day' as const,
     rate30: scheduled ? Math.round((completed / scheduled) * 100) : 0,
+    overLimit,
   };
 }
 
-function weeklyStreaks(goal: number, counts: Record<DateKey, number>, origin: Date, today: Date, windowStart: Date) {
+function weeklyStreaks(habit: StatsHabit, counts: Record<DateKey, number>, origin: Date, today: Date, windowStart: Date) {
+  const goal = habit.goal.count;
+  const quit = isQuit(habit);
   let run = 0;
   let best = 0;
   let weeks = 0;
   let progress = 0;
+  let overLimit = 0;
   const current = startOfWeek(today);
   for (let w = startOfWeek(origin); w <= current; w = addDays(w, 7)) {
     const count = weekCount(counts, w);
-    const met = count >= goal;
-    const isCurrent = w.getTime() === current.getTime();
+    const met = quit ? count <= goal : count >= goal;
+    const settled = met || w.getTime() !== current.getTime() || quit;
     if (met) run++;
-    else if (!isCurrent) run = 0;
+    else if (settled) run = 0;
+    if (quit && !met) overLimit++;
     best = Math.max(best, run);
-    if (addDays(w, 6) >= windowStart && (met || !isCurrent)) {
+    if (addDays(w, 6) >= windowStart && settled) {
       weeks++;
-      progress += Math.min(count / goal, 1);
+      progress += quit ? Number(met) : Math.min(count / goal, 1);
     }
   }
   return {
@@ -89,6 +98,7 @@ function weeklyStreaks(goal: number, counts: Record<DateKey, number>, origin: Da
     bestStreak: best,
     streakUnit: 'week' as const,
     rate30: weeks ? Math.round((progress / weeks) * 100) : 0,
+    overLimit,
   };
 }
 

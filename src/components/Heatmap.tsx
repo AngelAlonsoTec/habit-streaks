@@ -12,6 +12,8 @@ type Props = {
   target?: number;
   /** Días en que el hábito no toca: se dibujan más tenues. */
   isScheduled?: (date: Date) => boolean;
+  /** Nivel de cada día (0-1, o -1 si se pasó del límite). Por defecto, registrado / `target`. */
+  level?: (date: Date, count: number) => number;
   /** Número fijo de semanas. Si se omite, se muestran las que quepan en el ancho. */
   weeks?: number;
   /** Tamaño de celda. Al ajustar al ancho es el mínimo: las celdas crecen para llenar la fila. */
@@ -77,9 +79,10 @@ export function monthBoundaries(weeks: HeatmapCell[][]): Segment[] {
   return segments;
 }
 
-/** Color de una celda según el progreso del día (0 = vacío, 1 = completo). */
-export function cellColor(color: string, emptyAlpha: string, progress: number, scheduled: boolean): string {
-  if (progress <= 0) return scheduled ? color + emptyAlpha : withAlpha(color, 0.07);
+/** Color de una celda según el progreso del día (0 = vacío, 1 = completo, negativo = límite superado). */
+export function cellColor(color: string, emptyAlpha: string, progress: number, scheduled: boolean, danger = color): string {
+  if (progress < 0) return danger;
+  if (progress === 0) return scheduled ? color + emptyAlpha : withAlpha(color, 0.07);
   if (progress >= 1) return color;
   return withAlpha(color, 0.3 + 0.45 * progress);
 }
@@ -94,6 +97,7 @@ export const Heatmap = memo(function Heatmap({
   color,
   target = 1,
   isScheduled,
+  level,
   weeks: fixedWeeks,
   cellSize = 11,
   showMonthLabels = false,
@@ -128,14 +132,16 @@ export const Heatmap = memo(function Heatmap({
       week.forEach((cell, d) => {
         if (cell.future) return;
         const scheduled = isScheduled ? isScheduled(cell.date) : true;
-        const fill = cellColor(color, theme.emptyAlpha, (counts?.[cell.key] ?? 0) / target, scheduled);
+        const count = counts?.[cell.key] ?? 0;
+        const progress = level ? level(cell.date, count) : count / target;
+        const fill = cellColor(color, theme.emptyAlpha, progress, scheduled, theme.danger);
         const list = byColor.get(fill) ?? [];
         list.push(roundedRect(c * step, d * step, size, r));
         byColor.set(fill, list);
       }),
     );
     return [...byColor.entries()].map(([fill, rects]) => ({ fill, d: rects.join('') }));
-  }, [weeks, counts, color, target, isScheduled, theme.emptyAlpha, size, step]);
+  }, [weeks, counts, color, target, isScheduled, level, theme.emptyAlpha, theme.danger, size, step]);
 
   const boundary = useMemo(
     () =>
@@ -219,17 +225,21 @@ export const Heatmap = memo(function Heatmap({
   );
 });
 
-/** Leyenda "Menos ▢▢▢▢ Más" para hábitos con varias repeticiones al día. */
-export function HeatmapLegend({ color }: { color: string }) {
+/**
+ * Leyenda "Menos ▢▢▢▢ Más" para hábitos con varias repeticiones al día. Al dejar un hábito
+ * (`limit`), "Superado ■ ▢▢▢ Limpio": rojo si se pasó y más lleno cuanto más lejos del límite.
+ */
+export function HeatmapLegend({ color, limit }: { color: string; limit?: number }) {
   const theme = useTheme();
-  const levels = [0, 0.33, 0.66, 1];
+  const quit = limit != null;
+  const levels = !quit ? [0, 0.33, 0.66, 1] : limit === 0 ? [-1, 1] : [-1, 0.33, 0.66, 1];
   return (
     <View style={[styles.row, styles.legend]}>
-      <Text style={[styles.legendText, { color: theme.muted }]}>Menos</Text>
+      <Text style={[styles.legendText, { color: theme.muted }]}>{quit ? (limit === 0 ? 'Recaída' : 'Superado') : 'Menos'}</Text>
       {levels.map((l) => (
-        <View key={l} style={[styles.legendCell, { backgroundColor: cellColor(color, theme.emptyAlpha, l, true) }]} />
+        <View key={l} style={[styles.legendCell, { backgroundColor: cellColor(color, theme.emptyAlpha, l, true, theme.danger) }]} />
       ))}
-      <Text style={[styles.legendText, { color: theme.muted }]}>Más</Text>
+      <Text style={[styles.legendText, { color: theme.muted }]}>{quit ? 'Limpio' : 'Más'}</Text>
     </View>
   );
 }

@@ -35,6 +35,16 @@ describe('planReminders', () => {
     expect(first.body).toBe('Llevas 3 de 8 hoy.');
   });
 
+  it('al dejar: avisa aunque no haya registros, pero no si ya se pasó del límite', () => {
+    const smoke = makeHabit({ reminders: ['20:00'], kind: 'quit', goal: { period: 'day', count: 0 } });
+    const plan = planReminders([smoke], {}, NOW);
+    expect(plan).toHaveLength(7);
+    expect(plan[0].body).toBe('Sigue así: hoy sin recaídas.');
+    expect(planReminders([smoke], { h1: { '2026-09-25': 1 } }, NOW)).toHaveLength(6);
+    const coffee = makeHabit({ reminders: ['20:00'], kind: 'quit', goal: { period: 'day', count: 2 } });
+    expect(planReminders([coffee], { h1: { '2026-09-25': 1 } }, NOW)[0].body).toBe('Hoy: 1 / máx. 2.');
+  });
+
   it('muestra la cantidad con su unidad en hábitos cuantitativos', () => {
     const daily = makeHabit({ reminders: ['20:00'], unit: 'km', goal: { period: 'day', count: 5 } });
     expect(planReminders([daily], { h1: { '2026-09-25': 2.5 } }, NOW)[0].body).toBe('Llevas 2,5 de 5 km hoy.');

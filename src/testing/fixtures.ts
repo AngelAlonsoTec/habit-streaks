@@ -13,6 +13,7 @@ export function makeHabit(overrides: Partial<Habit> = {}): Habit {
     color: '#3B82F6',
     categories: [],
     timeOfDay: 'anytime',
+    kind: 'build',
     goal: { period: 'day', count: 1 },
     unit: null,
     days: ALL_DAYS,

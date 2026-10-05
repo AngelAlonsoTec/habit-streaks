@@ -1,7 +1,7 @@
 import { counts, makeHabit } from '@/testing/fixtures';
 import { fromKey } from '../dates';
 import {
-  dailyTarget, describeGoal, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
+  dailyTarget, dayLevel, describeGoal, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
 } from '../habit';
 
 describe('reglas de hábito', () => {
@@ -87,5 +87,46 @@ describe('hábitos cuantitativos', () => {
     expect(quickSteps(run)).toEqual([0.5, 1, 2, 5]);
     expect(quickSteps(makeHabit({ unit: 'capítulos', goal: { period: 'day', count: 4 } }))).toEqual([0.5, 1, 2, 5]);
     expect(quickSteps(makeHabit({ unit: 'flexiones', goal: { period: 'day', count: 100 } }))).toEqual([10, 25, 50, 100]);
+  });
+});
+
+describe('hábitos para dejar', () => {
+  const smoke = makeHabit({ kind: 'quit', goal: { period: 'day', count: 0 } });
+  const coffee = makeHabit({ kind: 'quit', goal: { period: 'day', count: 2 } });
+  const day = fromKey('2026-09-25');
+
+  it('un día sin registros cuenta como logrado; pasar del límite, no', () => {
+    expect(isDoneFor(smoke, undefined, day)).toBe(true);
+    expect(isDoneFor(smoke, { '2026-09-25': 1 }, day)).toBe(false);
+    expect(isDoneFor(coffee, { '2026-09-25': 2 }, day)).toBe(true);
+    expect(isDoneFor(coffee, { '2026-09-25': 3 }, day)).toBe(false);
+  });
+
+  it('límite semanal: cuenta la suma de la semana', () => {
+    const fastFood = makeHabit({ kind: 'quit', goal: { period: 'week', count: 1 } });
+    expect(isDoneFor(fastFood, { '2026-09-21': 1 }, day)).toBe(true);
+    expect(isDoneFor(fastFood, { '2026-09-21': 1, '2026-09-24': 1 }, day)).toBe(false);
+  });
+
+  it('nivel del día: lleno si va limpio, menos cuanto más cerca del límite, -1 si lo pasa', () => {
+    const start = fromKey('2026-09-01');
+    expect(dayLevel(coffee, 0, day, start)).toBe(1);
+    expect(dayLevel(coffee, 1, day, start)).toBeCloseTo(2 / 3);
+    expect(dayLevel(coffee, 3, day, start)).toBe(-1);
+    expect(dayLevel(smoke, 1, day, start)).toBe(-1);
+    // Antes de empezar no hay nada que pintar.
+    expect(dayLevel(smoke, 0, fromKey('2026-08-31'), start)).toBe(0);
+    // Al generar el nivel es el progreso hacia la meta.
+    expect(dayLevel(makeHabit({ goal: { period: 'day', count: 4 } }), 1, day, start)).toBe(0.25);
+  });
+
+  it('describe el límite y el estado del día', () => {
+    expect(describeGoal(smoke)).toBe('Sin recaídas · Todos los días');
+    expect(describeGoal(coffee)).toBe('Máx. 2 veces al día · Todos los días');
+    expect(describeGoal(makeHabit({ kind: 'quit', unit: 'min', goal: { period: 'week', count: 120 } }))).toBe('Máx. 120 min por semana');
+    expect(describeProgress(smoke, 0, 0)).toBe('Sin recaídas');
+    expect(describeProgress(smoke, 2, 0)).toBe('2 recaídas');
+    expect(describeProgress(coffee, 1, 2)).toBe('1 / máx. 2');
+    expect(describeProgress(makeHabit({ kind: 'quit', unit: 'min' }), 45, 60)).toBe('45 / máx. 60 min');
   });
 });

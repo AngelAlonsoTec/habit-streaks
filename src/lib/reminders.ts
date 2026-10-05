@@ -1,5 +1,5 @@
 import { addDays, startOfDay, toKey } from './dates';
-import { Completions, dailyTarget, formatAmount, Habit, isDoneFor, isScheduledOn, weekCount } from './habit';
+import { Completions, dailyTarget, describeProgress, formatAmount, Habit, isDoneFor, isQuit, isScheduledOn, weekCount } from './habit';
 
 /** Días hacia delante que se programan. Se recalculan al abrir la app y al marcar hábitos. */
 const DAYS_AHEAD = 7;
@@ -15,7 +15,8 @@ export type PlannedReminder = {
 
 /**
  * Calcula los recordatorios de los próximos días. Omite los días en los que el hábito
- * no toca o ya está cumplido: no molestamos si ya lo hiciste.
+ * no toca o ya está cumplido: no molestamos si ya lo hiciste. Los hábitos para dejar
+ * avisan mientras sigas dentro del límite (pasado el límite, el aviso ya no ayuda).
  */
 export function planReminders(habits: Habit[], completions: Completions, now = new Date()): PlannedReminder[] {
   const today = startOfDay(now);
@@ -25,7 +26,8 @@ export function planReminders(habits: Habit[], completions: Completions, now = n
     const days = completions[habit.id];
     for (let d = 0; d < DAYS_AHEAD; d++) {
       const day = addDays(today, d);
-      if (!isScheduledOn(habit, day) || isDoneFor(habit, days, day)) continue;
+      const skip = isQuit(habit) ? !isDoneFor(habit, days, day) : isDoneFor(habit, days, day);
+      if (!isScheduledOn(habit, day) || skip) continue;
       const count = days?.[toKey(day)] ?? 0;
       const target = dailyTarget(habit);
       for (const time of habit.reminders) {
@@ -45,6 +47,13 @@ export function planReminders(habits: Habit[], completions: Completions, now = n
 }
 
 function reminderBody(habit: Habit, count: number, target: number, week: number): string {
+  if (isQuit(habit)) {
+    const limit = habit.goal.count;
+    if (limit === 0) return 'Sigue así: hoy sin recaídas.';
+    const value = habit.goal.period === 'week' ? week : count;
+    const progress = describeProgress(habit, value, limit);
+    return `${habit.goal.period === 'week' ? 'Esta semana' : 'Hoy'}: ${progress}.`;
+  }
   if (habit.unit != null) {
     const unit = habit.unit;
     if (habit.goal.period === 'week') return `Esta semana llevas ${formatAmount(week)} de ${formatAmount(habit.goal.count)} ${unit}.`;

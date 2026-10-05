@@ -4,15 +4,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AmountSheet } from '@/components/AmountSheet';
 import { HabitActionsSheet } from '@/components/HabitActionsSheet';
 import { HabitCard } from '@/components/HabitCard';
 import { ProgressRing } from '@/components/ProgressRing';
+import { RecordSheet } from '@/components/RecordSheet';
 import { Chip } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { DateKey, fromKey, todayKey } from '@/lib/dates';
-import { Habit, isDoneFor, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
+import { Habit, isDoneFor, isQuit, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
 import { useHabits } from '@/store/habits';
 import { IconName, useTheme } from '@/theme';
 
@@ -53,8 +53,8 @@ export default function TodayScreen() {
   const [selectedDay, setSelectedDay] = useState<DateKey>(today);
   const [category, setCategory] = useState<string | null>(null);
   const [menuHabit, setMenuHabit] = useState<Habit | null>(null);
-  const [amountTarget, setAmountTarget] = useState<{ habit: Habit; day: DateKey } | null>(null);
-  const openAmount = useCallback((habit: Habit, day: DateKey) => setAmountTarget({ habit, day }), []);
+  const [recordTarget, setRecordTarget] = useState<{ habit: Habit; day: DateKey } | null>(null);
+  const openRecord = useCallback((habit: Habit, day: DateKey) => setRecordTarget({ habit, day }), []);
 
   const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
   const archivedCount = allHabits.length - habits.length;
@@ -65,25 +65,30 @@ export default function TodayScreen() {
   }, [habits, customCategories]);
   const activeCategory = category && usedCategories.some((c) => c.id === category) ? category : null;
 
-  const { sections, resting, doneCount, scheduledCount } = useMemo(() => {
+  const { sections, quitting, cleanCount, resting, doneCount, scheduledCount } = useMemo(() => {
     const date = fromKey(selectedDay);
     const done = (h: Habit) => isDoneFor(h, completions[h.id], date);
     const visible = habits.filter((h) => !activeCategory || h.categories.includes(activeCategory));
     const scheduled = visible.filter((h) => isScheduledOn(h, date));
+    // Los hábitos para dejar no son tareas del día: van aparte y no cuentan en el progreso.
+    const toDo = scheduled.filter((h) => !isQuit(h));
+    const toAvoid = scheduled.filter(isQuit);
     return {
       // Pendientes primero, completados al final de cada sección.
       sections: TIME_OF_DAY_ORDER.map((tod) => ({
         tod,
-        habits: scheduled.filter((h) => h.timeOfDay === tod).sort((a, b) => Number(done(a)) - Number(done(b))),
+        habits: toDo.filter((h) => h.timeOfDay === tod).sort((a, b) => Number(done(a)) - Number(done(b))),
       })).filter((s) => s.habits.length > 0),
+      quitting: toAvoid,
+      cleanCount: toAvoid.filter(done).length,
       resting: visible.filter((h) => !isScheduledOn(h, date)),
-      doneCount: scheduled.filter(done).length,
-      scheduledCount: scheduled.length,
+      doneCount: toDo.filter(done).length,
+      scheduledCount: toDo.length,
     };
   }, [habits, activeCategory, completions, selectedDay]);
 
   const progressFor = (d: Date) => {
-    const scheduled = habits.filter((h) => isScheduledOn(h, d));
+    const scheduled = habits.filter((h) => !isQuit(h) && isScheduledOn(h, d));
     if (!scheduled.length) return null;
     return scheduled.filter((h) => isDoneFor(h, completions[h.id], d)).length / scheduled.length;
   };
@@ -93,7 +98,7 @@ export default function TodayScreen() {
   const pending = scheduledCount - doneCount;
   const message =
     scheduledCount === 0
-      ? 'Nada programado para este día'
+      ? quitting.length ? 'Sin hábitos por hacer este día' : 'Nada programado para este día'
       : pending === 0
         ? 'Día completado'
         : `Te ${pending === 1 ? 'falta' : 'faltan'} ${pending} para completar el día`;
@@ -146,6 +151,18 @@ export default function TodayScreen() {
                   {doneCount} de {scheduledCount} completados
                 </Text>
                 <Text style={[styles.message, { color: theme.muted }]}>{message}</Text>
+                {quitting.length > 0 && (
+                  <View style={styles.quitLine}>
+                    <Ionicons
+                      name={cleanCount === quitting.length ? 'shield-checkmark' : 'alert-circle'}
+                      size={13}
+                      color={cleanCount === quitting.length ? theme.primary : theme.danger}
+                    />
+                    <Text style={[styles.message, { color: theme.muted }]}>
+                      {cleanCount} de {quitting.length} dentro del límite
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -180,10 +197,22 @@ export default function TodayScreen() {
                   <Text style={[styles.sectionTitle, { color: theme.muted }]}>{TIME_OF_DAY[section.tod].label}</Text>
                 </View>
                 {section.habits.map((h) => (
-                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} onLogAmount={openAmount} />
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} onRecord={openRecord} />
                 ))}
               </View>
             ))}
+
+            {quitting.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color={theme.muted} />
+                  <Text style={[styles.sectionTitle, { color: theme.muted }]}>Dejar</Text>
+                </View>
+                {quitting.map((h) => (
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={showHeatmaps} onLongPress={setMenuHabit} onRecord={openRecord} />
+                ))}
+              </View>
+            )}
 
             {resting.length > 0 && (
               <View style={styles.section}>
@@ -192,7 +221,7 @@ export default function TodayScreen() {
                   <Text style={[styles.sectionTitle, { color: theme.muted }]}>Descanso este día</Text>
                 </View>
                 {resting.map((h) => (
-                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={false} dimmed onLongPress={setMenuHabit} onLogAmount={openAmount} />
+                  <HabitCard key={h.id} habit={h} day={selectedDay} showHeatmap={false} dimmed onLongPress={setMenuHabit} onRecord={openRecord} />
                 ))}
               </View>
             )}
@@ -215,7 +244,7 @@ export default function TodayScreen() {
       )}
 
       <HabitActionsSheet habit={menuHabit} onClose={() => setMenuHabit(null)} />
-      <AmountSheet target={amountTarget} onClose={() => setAmountTarget(null)} />
+      <RecordSheet target={recordTarget} onClose={() => setRecordTarget(null)} />
     </>
   );
 }
@@ -235,6 +264,7 @@ const styles = StyleSheet.create({
   date: { fontSize: 13 },
   progressText: { fontSize: 18, fontWeight: '800' },
   message: { fontSize: 13 },
+  quitLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   backToday: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 10, borderRadius: 12,

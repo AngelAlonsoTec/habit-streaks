@@ -1,5 +1,5 @@
-import { addDays, DateKey, fromKey, MONTH_LABELS, startOfDay, startOfWeek, toKey, weekdayIndex, WEEKDAY_LABELS } from './dates';
-import { Completions, Habit, isDayComplete, isQuantity, isScheduledOn, weekCount } from './habit';
+import { addDays, DateKey, MONTH_LABELS, startOfDay, startOfWeek, toKey, weekdayIndex, WEEKDAY_LABELS } from './dates';
+import { Completions, Habit, habitStart, isDayComplete, isQuantity, isQuit, isScheduledOn, weekCount } from './habit';
 
 export type Period = 'week' | 'month' | 'quarter' | 'year';
 
@@ -17,11 +17,14 @@ export type Summary = {
   /** Cumplimiento 0-100, o null si en el periodo no tocaba nada. */
   rate: number | null;
   previousRate: number | null;
-  /** Veces completado (suma de repeticiones; en hábitos cuantitativos, un día con registro cuenta una vez). */
+  /**
+   * Veces completado (suma de repeticiones; en hábitos cuantitativos, un día con registro cuenta una vez).
+   * Los hábitos para dejar no suman: registrar una recaída no es completar nada.
+   */
   completions: number;
   /** Días en que se cumplieron todos los hábitos diarios que tocaban. */
   perfectDays: number;
-  /** Días con al menos un hábito marcado. */
+  /** Días con al menos un hábito marcado (de los que se generan). */
   activeDays: number;
   /** Días transcurridos del periodo (hasta hoy). */
   elapsedDays: number;
@@ -70,17 +73,9 @@ export function periodRange(period: Period, offset: number, today: Date): Period
   return { start, end, label: String(start.getFullYear()) };
 }
 
-/** Primer día desde el que cuenta un hábito: su creación o su primer registro, lo que sea antes. */
-function habitOrigin(habit: Habit, days: Record<DateKey, number> | undefined): Date {
-  const created = startOfDay(new Date(habit.createdAt));
-  const keys = Object.keys(days ?? {}).filter((k) => (days?.[k] ?? 0) > 0).sort();
-  const first = keys.length ? fromKey(keys[0]) : created;
-  return first < created ? first : created;
-}
-
 /**
  * Veces que tocaba el hábito entre `from` y `to` (hasta hoy) y cuántas se cumplieron.
- * Hoy sin hacer no cuenta como fallo. Las metas semanales cuentan cada semana cuyo lunes
+ * Hoy sin hacer no cuenta como fallo (al dejar un hábito, pasarse del límite hoy sí). Las metas semanales cuentan cada semana cuyo lunes
  * cae en el rango; con `dailyOnly` se ignoran (para gráficas por día).
  */
 export function occurrences(
@@ -90,9 +85,10 @@ export function occurrences(
   to: Date,
   today: Date,
   dailyOnly = false,
-  origin = habitOrigin(habit, days),
+  origin = habitStart(habit, days),
 ): Occurrences {
   const t = startOfDay(today);
+  const quit = isQuit(habit);
   let scheduled = 0;
   let done = 0;
 
@@ -102,7 +98,7 @@ export function occurrences(
     for (let d = start; d <= end; d = addDays(d, 1)) {
       if (!isScheduledOn(habit, d)) continue;
       const complete = isDayComplete(habit, days?.[toKey(d)]);
-      if (!complete && d.getTime() === t.getTime()) continue;
+      if (!complete && !quit && d.getTime() === t.getTime()) continue;
       scheduled++;
       if (complete) done++;
     }
@@ -115,10 +111,10 @@ export function occurrences(
   for (let w = firstMonday; w <= to && w <= t; w = addDays(w, 7)) {
     if (addDays(w, 6) < origin) continue;
     const count = weekCount(days, w);
-    const met = count >= habit.goal.count;
-    if (!met && w.getTime() === currentWeek.getTime()) continue;
+    const met = quit ? count <= habit.goal.count : count >= habit.goal.count;
+    if (!met && !quit && w.getTime() === currentWeek.getTime()) continue;
     scheduled++;
-    done += Math.min(count / habit.goal.count, 1);
+    done += quit ? Number(met) : Math.min(count / habit.goal.count, 1);
   }
   return { scheduled, done };
 }
@@ -187,7 +183,7 @@ export function summarize(
   const range = periodRange(period, offset, t);
   const prev = periodRange(period, offset - 1, t);
   const end = range.end < t ? range.end : t;
-  const origins: Origins = new Map(habits.map((h) => [h.id, habitOrigin(h, completions[h.id])]));
+  const origins: Origins = new Map(habits.map((h) => [h.id, habitStart(h, completions[h.id])]));
 
   const perHabit: HabitSummary[] = habits.map((h) => {
     const o = occurrences(h, completions[h.id], range.start, range.end, t, false, origins.get(h.id));
@@ -215,7 +211,7 @@ export function summarize(
     for (const h of habits) {
       const count = completions[h.id]?.[key] ?? 0;
       // Las cantidades no se suman: 5 km y 10.000 pasos no son 10.005 veces.
-      dayCount += isQuantity(h) ? Number(count > 0) : count;
+      if (!isQuit(h)) dayCount += isQuantity(h) ? Number(count > 0) : count;
       if (h.goal.period !== 'day') continue;
       const o = occurrences(h, completions[h.id], d, d, t, true, origins.get(h.id));
       day.scheduled += o.scheduled;

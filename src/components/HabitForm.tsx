@@ -9,11 +9,11 @@ import { Chip, SectionTitle, Segmented } from '@/components/ui';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { WEEKDAY_LABELS } from '@/lib/dates';
 import {
-  ALL_DAYS, formatAmount, Goal, HabitInput, MAX_AMOUNT, parseAmount, roundAmount, sortTimes, TIME_OF_DAY, TIME_OF_DAY_ORDER,
+  ALL_DAYS, formatAmount, Goal, HabitInput, HabitKind, MAX_AMOUNT, parseAmount, roundAmount, sortTimes, TIME_OF_DAY, TIME_OF_DAY_ORDER,
   TimeOfDay, UNIT_PRESETS, unitPreset,
 } from '@/lib/habit';
 import { REMINDERS_SUPPORTED, REMINDERS_UNAVAILABLE_MESSAGE, requestReminderPermission } from '@/lib/notifications';
-import { HABIT_TEMPLATES } from '@/lib/templates';
+import { HABIT_TEMPLATES, QUIT_TEMPLATES } from '@/lib/templates';
 import { MAX_GOAL, MAX_UNIT_LENGTH, useHabits } from '@/store/habits';
 import { HABIT_COLORS, HABIT_ICONS, IconName, useTheme } from '@/theme';
 
@@ -23,12 +23,25 @@ type Props = {
   onSubmit: (input: HabitInput) => void;
 };
 
-const STEPS: { label: string; title: string; subtitle: string; icon: IconName }[] = [
-  { label: 'Hábito', title: '¿Qué hábito quieres construir?', subtitle: 'Ponle un nombre corto y elige cómo se verá.', icon: 'create-outline' },
-  { label: 'Frecuencia', title: '¿Con qué frecuencia?', subtitle: 'Define tu meta y los días en que toca.', icon: 'flag-outline' },
-  { label: 'Horario', title: '¿Cuándo lo harás?', subtitle: 'Agrupa tu día y recibe avisos a la hora que elijas.', icon: 'alarm-outline' },
-  { label: 'Categorías', title: '¿Cómo lo clasificas?', subtitle: 'Opcional. Te permite filtrar tus hábitos.', icon: 'pricetags-outline' },
-];
+type Step = { label: string; title: string; subtitle: string; icon: IconName };
+
+const STEPS: Record<HabitKind, Step[]> = {
+  build: [
+    { label: 'Hábito', title: '¿Qué hábito quieres construir?', subtitle: 'Ponle un nombre corto y elige cómo se verá.', icon: 'create-outline' },
+    { label: 'Frecuencia', title: '¿Con qué frecuencia?', subtitle: 'Define tu meta y los días en que toca.', icon: 'flag-outline' },
+    { label: 'Horario', title: '¿Cuándo lo harás?', subtitle: 'Agrupa tu día y recibe avisos a la hora que elijas.', icon: 'alarm-outline' },
+    { label: 'Categorías', title: '¿Cómo lo clasificas?', subtitle: 'Opcional. Te permite filtrar tus hábitos.', icon: 'pricetags-outline' },
+  ],
+  quit: [
+    { label: 'Hábito', title: '¿Qué hábito quieres dejar?', subtitle: 'Ponle un nombre corto y elige cómo se verá.', icon: 'create-outline' },
+    { label: 'Límite', title: '¿Cuál es tu límite?', subtitle: 'Lo máximo que te permites. Con 0 lo dejas del todo.', icon: 'flag-outline' },
+    { label: 'Avisos', title: '¿Quieres recordatorios?', subtitle: 'Un aviso a la hora que elijas para mantener tu propósito.', icon: 'alarm-outline' },
+    { label: 'Categorías', title: '¿Cómo lo clasificas?', subtitle: 'Opcional. Te permite filtrar tus hábitos.', icon: 'pricetags-outline' },
+  ],
+};
+
+/** Meta de partida al generar; al dejar, el límite de partida es 0 (dejarlo del todo). */
+const DEFAULT_GOAL: Record<HabitKind, Goal> = { build: { period: 'day', count: 1 }, quit: { period: 'day', count: 0 } };
 
 const DAY_PRESETS = [
   { label: 'Todos los días', days: ALL_DAYS },
@@ -49,6 +62,7 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const isNew = !initial;
 
   const [step, setStep] = useState(0);
+  const [kind, setKind] = useState<HabitKind>(initial?.kind ?? 'build');
   const [name, setName] = useState(initial?.name ?? '');
   const [color, setColor] = useState(initial?.color ?? HABIT_COLORS[0]);
   const [icon, setIcon] = useState(initial?.icon ?? HABIT_ICONS[0]);
@@ -67,10 +81,14 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const [picker, setPicker] = useState<{ index: number | null; time: string } | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
+  const quit = kind === 'quit';
+  const steps = STEPS[kind];
   const hasName = name.trim().length > 0;
-  const isLast = step === STEPS.length - 1;
+  const isLast = step === steps.length - 1;
   // Al crear, solo se puede saltar a pasos ya visitados; al editar, a cualquiera.
-  const [furthest, setFurthest] = useState(isNew ? 0 : STEPS.length - 1);
+  const [furthest, setFurthest] = useState(isNew ? 0 : steps.length - 1);
+  /** Mínimo de la meta: al dejar un hábito el límite puede ser 0. */
+  const minCount = quit ? 0 : 1;
 
   const goTo = (i: number) => {
     if (!hasName) return;
@@ -78,7 +96,16 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
     setFurthest((f) => Math.max(f, i));
   };
 
+  const changeKind = (k: HabitKind) => {
+    setKind(k);
+    setGoal(DEFAULT_GOAL[k]);
+    setMeasure('count');
+    setAmountText('');
+    if (k === 'quit') setTimeOfDay('anytime');
+  };
+
   const applyTemplate = (t: HabitInput) => {
+    setKind(t.kind);
     setName(t.name);
     setColor(t.color);
     setIcon(t.icon);
@@ -107,10 +134,10 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const toggleDay = (d: number) =>
     setDays((ds) => (ds.includes(d) ? (ds.length > 1 ? ds.filter((x) => x !== d) : ds) : [...ds, d].sort()));
 
-  const setCount = (count: number) => setGoal((g) => ({ ...g, count: Math.min(Math.max(1, count), MAX_GOAL) }));
+  const setCount = (count: number) => setGoal((g) => ({ ...g, count: Math.min(Math.max(minCount, count), MAX_GOAL) }));
 
   const setAmount = (amount: number) => {
-    const count = Math.min(Math.max(0.01, roundAmount(amount)), MAX_AMOUNT);
+    const count = Math.min(Math.max(quit ? 0 : 0.01, roundAmount(amount)), MAX_AMOUNT);
     setGoal((g) => ({ ...g, count }));
     setAmountText(formatAmount(count));
   };
@@ -119,7 +146,7 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const changeMeasure = (m: Measure) => {
     setMeasure(m);
     if (m === 'amount') setAmount(unitPreset(unit)?.goal ?? DEFAULT_UNIT.goal);
-    else setGoal((g) => ({ ...g, count: g.period === 'week' ? 3 : 1 }));
+    else setGoal((g) => ({ ...g, count: quit ? 0 : g.period === 'week' ? 3 : 1 }));
   };
 
   const chooseUnit = (u: string) => {
@@ -144,14 +171,26 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   const submit = () => {
     if (!hasName) return;
     const finalUnit = measure === 'amount' ? unit.trim() || 'unidades' : null;
-    onSubmit({ name: name.trim(), color, icon, categories, timeOfDay, goal, unit: finalUnit, days, reminders });
+    onSubmit({ name: name.trim(), color, icon, categories, timeOfDay, kind, goal, unit: finalUnit, days, reminders });
   };
 
-  const current = STEPS[step];
+  const current = steps[step];
   const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
 
   const stepAppearance = (
     <>
+      {isNew && (
+        <Segmented
+          value={kind}
+          color={color}
+          style={styles.kindSelector}
+          options={[
+            { value: 'build', label: 'Generar hábito', icon: 'trending-up' },
+            { value: 'quit', label: 'Dejar hábito', icon: 'ban' },
+          ]}
+          onChange={changeKind}
+        />
+      )}
       <View style={[styles.nameRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={[styles.preview, { backgroundColor: color }]}>
           <Ionicons name={icon} size={26} color="#FFFFFF" />
@@ -173,7 +212,7 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
         <>
           <SectionTitle>Sugerencias</SectionTitle>
           <View style={styles.wrap}>
-            {HABIT_TEMPLATES.map((t) => (
+            {(quit ? QUIT_TEMPLATES : HABIT_TEMPLATES).map((t) => (
               <Chip key={t.name} label={t.name} icon={t.icon} onPress={() => applyTemplate(t)} />
             ))}
           </View>
@@ -295,7 +334,9 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
           />
           <Text style={[styles.amountUnit, { color: theme.muted }]} numberOfLines={1}>{unit.trim() || 'unidades'}</Text>
         </View>
-        <Text style={[styles.stepperLabel, { color: theme.muted }]}>{goal.period === 'day' ? 'al día' : 'por semana'}</Text>
+        <Text style={[styles.stepperLabel, { color: theme.muted }]}>
+          {goal.period === 'day' ? 'al día' : 'por semana'}{quit ? ' como máximo' : ''}
+        </Text>
       </View>
       <Pressable
         onPress={() => setAmount(goal.count + amountStep)}
@@ -319,7 +360,9 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
       <View style={styles.stepperValue}>
         <Text style={[styles.stepperNumber, { color: theme.text }]}>{goal.count}</Text>
         <Text style={[styles.stepperLabel, { color: theme.muted }]}>
-          {goal.count === 1 ? 'vez' : 'veces'} {goal.period === 'day' ? 'al día' : 'por semana'}
+          {quit && goal.count === 0
+            ? 'Ninguna: dejarlo del todo'
+            : `${goal.count === 1 ? 'vez' : 'veces'} ${goal.period === 'day' ? 'al día' : 'por semana'}${quit ? ' como máximo' : ''}`}
         </Text>
       </View>
       <Pressable
@@ -346,24 +389,27 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
       />
       {measure === 'amount' && unitChips}
 
-      <SectionTitle>Meta</SectionTitle>
+      <SectionTitle>{quit ? 'Límite' : 'Meta'}</SectionTitle>
       <Segmented
         value={goal.period}
         color={color}
         options={[
-          { value: 'day', label: 'Diaria', icon: 'today-outline' },
+          { value: 'day', label: quit ? 'Diario' : 'Diaria', icon: 'today-outline' },
           { value: 'week', label: 'Semanal', icon: 'calendar-outline' },
         ]}
         onChange={(period) =>
           setGoal((g) => ({
             period,
-            count: measure === 'amount' ? g.count : period === 'week' ? Math.min(Math.max(g.count, 3), 7) : 1,
+            // El límite se conserva; la meta por veces se ajusta a algo razonable para el periodo.
+            count: measure === 'amount' || quit ? g.count : period === 'week' ? Math.min(Math.max(g.count, 3), 7) : 1,
           }))
         }
       />
       {measure === 'amount' ? amountStepper : countStepper}
       <Text style={[styles.hint, { color: theme.muted }]}>
-        {measure === 'amount'
+        {quit
+          ? 'Cada día sin pasarte del límite cuenta como logrado. Solo registras cuando lo haces.'
+          : measure === 'amount'
           ? 'Cada vez que lo hagas, anota la cantidad con las sumas rápidas o escribiendo el número exacto.'
           : goal.period === 'day'
             ? 'Por ejemplo, 8 para vasos de agua. Cada toque en el hábito suma una vez.'
@@ -405,7 +451,7 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
     </>
   );
 
-  const stepSchedule = (
+  const timeOfDayPicker = (
     <>
       <SectionTitle>Momento del día</SectionTitle>
       <View style={styles.todGrid}>
@@ -427,6 +473,12 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
           );
         })}
       </View>
+    </>
+  );
+
+  const stepSchedule = (
+    <>
+      {!quit && timeOfDayPicker}
 
       <SectionTitle>Recordatorios</SectionTitle>
       <View style={styles.wrap}>
@@ -452,7 +504,9 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
           ? REMINDERS_UNAVAILABLE_MESSAGE
           : permissionDenied
             ? 'Las notificaciones están desactivadas. Actívalas en los ajustes del teléfono para recibir avisos.'
-            : 'Solo te avisamos los días que toca y si aún no lo has completado.'}
+            : quit
+              ? 'Te avisamos los días que toca mientras sigas dentro del límite.'
+              : 'Solo te avisamos los días que toca y si aún no lo has completado.'}
       </Text>
     </>
   );
@@ -493,7 +547,7 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
   return (
     <View style={[styles.flex, { backgroundColor: theme.bg }]}>
       <View style={styles.steps}>
-        {STEPS.map((s, i) => {
+        {steps.map((s, i) => {
           const reachable = hasName && i <= furthest;
           const active = i === step;
           return (
@@ -569,6 +623,7 @@ const styles = StyleSheet.create({
   stepBar: { height: 4, borderRadius: 2 },
   stepLabel: { fontSize: 12, textAlign: 'center' },
   bold: { fontWeight: '700' },
+  kindSelector: { marginBottom: 14 },
   content: { padding: 16, paddingTop: 20, paddingBottom: 32 },
   stepTitle: { fontSize: 22, fontWeight: '800' },
   stepSubtitle: { fontSize: 14, marginTop: 4, marginBottom: 16, lineHeight: 20 },

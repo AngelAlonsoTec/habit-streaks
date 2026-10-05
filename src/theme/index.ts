@@ -52,6 +52,7 @@ export const HABIT_ICONS: IconName[] = [
   'color-palette', 'musical-notes', 'camera', 'game-controller', 'cash', 'wallet',
   'briefcase', 'laptop', 'phone-portrait', 'home', 'paw', 'people',
   'call', 'chatbubbles', 'airplane', 'flame', 'star', 'sparkles',
+  'logo-no-smoking', 'wine', 'beer', 'fast-food', 'ice-cream', 'tv',
 ];
 
 /** Añade opacidad (0-1) a un color hex de 6 dígitos. */

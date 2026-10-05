@@ -146,3 +146,30 @@ describe('estadísticas de hábitos cuantitativos', () => {
     expect(stats.total).toBe(19);
   });
 });
+
+describe('estadísticas de hábitos para dejar', () => {
+  const created = new Date(2026, 8, 18, 9).toISOString(); // viernes 18/09
+
+  it('la racha cuenta los días limpios desde la última recaída, hoy incluido', () => {
+    const habit = makeHabit({ kind: 'quit', goal: { period: 'day', count: 0 }, createdAt: created });
+    const stats = computeStats(habit, { '2026-09-20': 1 }, NOW);
+    expect(stats.currentStreak).toBe(5); // del 21 al 25
+    expect(stats.bestStreak).toBe(5);
+    expect(stats.overLimit).toBe(1);
+    expect(stats.rate30).toBe(88); // 7 de 8 días
+  });
+
+  it('pasarse hoy rompe la racha (no espera a que acabe el día)', () => {
+    const habit = makeHabit({ kind: 'quit', goal: { period: 'day', count: 2 }, createdAt: created });
+    const stats = computeStats(habit, { '2026-09-25': 3 }, NOW);
+    expect(stats.currentStreak).toBe(0);
+    expect(stats.bestStreak).toBe(7);
+    expect(stats.overLimit).toBe(1);
+  });
+
+  it('límite semanal: racha en semanas', () => {
+    const habit = makeHabit({ kind: 'quit', goal: { period: 'week', count: 1 }, createdAt: created });
+    const stats = computeStats(habit, { '2026-09-14': 1, '2026-09-15': 1, '2026-09-23': 1 }, NOW);
+    expect(stats).toMatchObject({ currentStreak: 1, streakUnit: 'week', overLimit: 1 });
+  });
+});

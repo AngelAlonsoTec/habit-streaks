@@ -13,12 +13,14 @@ type Props = {
   target: number;
   /** Unidad de los hábitos cuantitativos (null = veces). */
   unit?: string | null;
+  /** Nivel de cada día (0-1, o -1 si se pasó del límite). Por defecto, registrado / `target`. */
+  level?: (date: Date, count: number) => number;
   isScheduled: (date: Date) => boolean;
   onPressDay: (day: DateKey) => void;
   onLongPressDay: (day: DateKey) => void;
 };
 
-export function MonthCalendar({ counts, color, target, unit = null, isScheduled, onPressDay, onLongPressDay }: Props) {
+export function MonthCalendar({ counts, color, target, unit = null, level, isScheduled, onPressDay, onLongPressDay }: Props) {
   const theme = useTheme();
   const today = todayKey();
   const [offset, setOffset] = useState(0);
@@ -66,10 +68,11 @@ export function MonthCalendar({ counts, color, target, unit = null, isScheduled,
             const future = key > today;
             if (!inMonth) return <View key={key} style={styles.cell} />;
             const count = counts?.[key] ?? 0;
-            const progress = count / target;
+            const progress = future ? 0 : level ? level(d, count) : count / target;
             const scheduled = isScheduled(d);
-            const bg = progress > 0 ? cellColor(color, theme.emptyAlpha, progress, true) : 'transparent';
-            const fg = progress >= 1 ? '#FFFFFF' : future || !scheduled ? theme.muted : theme.text;
+            const over = progress < 0;
+            const bg = progress !== 0 ? cellColor(color, theme.emptyAlpha, progress, true, theme.danger) : 'transparent';
+            const fg = progress >= 1 || over ? '#FFFFFF' : future || !scheduled ? theme.muted : theme.text;
             return (
               <Pressable
                 key={key}
@@ -87,8 +90,10 @@ export function MonthCalendar({ counts, color, target, unit = null, isScheduled,
                     !scheduled && progress === 0 && !future && { opacity: 0.45 },
                   ]}
                 >
-                  <Text style={[styles.dayText, { color: fg }, progress >= 1 && styles.bold]}>{d.getDate()}</Text>
-                  {unit != null && count > 0 && count < target ? (
+                  <Text style={[styles.dayText, { color: fg }, (progress >= 1 || over) && styles.bold]}>{d.getDate()}</Text>
+                  {level && count > 0 ? (
+                    <Text style={[styles.badge, { color: fg }]} numberOfLines={1}>{unit != null ? formatAmount(count) : count}</Text>
+                  ) : unit != null && count > 0 && count < target ? (
                     <Text style={[styles.badge, { color: theme.text }]} numberOfLines={1}>{formatAmount(count)}</Text>
                   ) : target > 1 && count > 0 && count < target ? (
                     <Text style={[styles.badge, { color: theme.text }]}>{count}/{target}</Text>
