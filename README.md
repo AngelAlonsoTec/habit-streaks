@@ -16,8 +16,11 @@
 
 ### Funciones
 
-- **Heatmap por hábito**: cuadrícula continua con una línea sutil entre meses e intensidad según el progreso del día.
+- **Heatmap por hábito**: un bloque por mes con su nombre, e intensidad según el progreso del día.
 - **Metas flexibles**: una o varias veces al día (por ejemplo, 8 vasos de agua), días concretos de la semana o *N* veces por semana.
+- **Hábitos cuantitativos**: minutos, km, pasos, páginas o una unidad propia, con sumas rápidas y cantidades exactas (admite decimales).
+- **Generar o dejar un hábito**: al dejarlo, la meta es un límite diario o semanal (0 = dejarlo del todo); solo se registran las recaídas y los días que se pasan del límite se marcan en rojo.
+- **Objetivos**: hitos opcionales por hábito (por ejemplo, «Alcanzar el A1»), con fecha límite y sugerencias según el hábito.
 - **Rachas inteligentes**: respetan los días de descanso del hábito; las metas semanales cuentan la racha en semanas.
 - **Pantalla Hoy**: los últimos 7 días para registrar días pasados, progreso del día, filtro por categoría y hábitos agrupados en mañana, tarde, noche o cualquier momento.
 - **Asistente de creación** en 4 pasos, con plantillas, 15 categorías predefinidas y categorías propias.
