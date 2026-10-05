@@ -80,10 +80,14 @@ function weeklyStreaks(habit: StatsHabit, counts: Record<DateKey, number>, origi
   let progress = 0;
   let overLimit = 0;
   const current = startOfWeek(today);
-  for (let w = startOfWeek(origin); w <= current; w = addDays(w, 7)) {
+  const first = startOfWeek(origin);
+  for (let w = first; w <= current; w = addDays(w, 7)) {
     const count = weekCount(counts, w);
     const met = quit ? count <= goal : count >= goal;
-    const settled = met || w.getTime() !== current.getTime() || quit;
+    // Como la semana en curso, la primera semana si el hábito empezó a mitad (tenía menos días)
+    // solo cuenta si se llegó a la meta.
+    const partial = w.getTime() === current.getTime() || (w.getTime() === first.getTime() && w < origin);
+    const settled = met || !partial || quit;
     if (met) run++;
     else if (settled) run = 0;
     if (quit && !met) overLimit++;

@@ -5,12 +5,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CheckButton, QuitButton } from '@/components/CheckButton';
 import { Heatmap } from '@/components/Heatmap';
-import { DateKey, fromKey, todayKey } from '@/lib/dates';
+import { DateKey, fromKey } from '@/lib/dates';
 import {
   dailyTarget, describeGoal, describeProgress, Habit, isQuantity, isQuit, isScheduledOn, quitLevel, weekCount,
 } from '@/lib/habit';
 import { tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
+import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { useTheme } from '@/theme';
 
@@ -38,10 +39,11 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
   const quit = isQuit(habit);
   const target = dailyTarget(habit);
   const week = weekly ? weekCount(counts, date) : 0;
-  const stats = useMemo(() => computeStats(habit, counts), [habit, counts]);
+  const today = useToday();
+  const stats = useMemo(() => computeStats(habit, counts, fromKey(today)), [habit, counts, today]);
   const isScheduled = useCallback((d: Date) => isScheduledOn(habit, d), [habit]);
   const level = useMemo(() => quitLevel(habit, counts), [habit, counts]);
-  const when = day === todayKey() ? ' hoy' : '';
+  const when = day === today ? ' hoy' : '';
   const record = () => {
     tapFeedback();
     onRecord?.(habit, day);

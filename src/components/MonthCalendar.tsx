@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { cellColor } from '@/components/Heatmap';
-import { addDays, DateKey, fromKey, startOfWeek, toKey, todayKey, WEEKDAY_LABELS } from '@/lib/dates';
+import { addDays, DateKey, fromKey, startOfWeek, toKey, WEEKDAY_LABELS } from '@/lib/dates';
 import { formatAmount } from '@/lib/habit';
+import { useToday } from '@/lib/useToday';
 import { useTheme } from '@/theme';
 
 type Props = {
@@ -22,7 +23,7 @@ type Props = {
 
 export function MonthCalendar({ counts, color, target, unit = null, level, isScheduled, onPressDay, onLongPressDay }: Props) {
   const theme = useTheme();
-  const today = todayKey();
+  const today = useToday();
   const [offset, setOffset] = useState(0);
 
   const { title, weeks, month } = useMemo(() => {

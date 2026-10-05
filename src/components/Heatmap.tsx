@@ -2,7 +2,8 @@ import { memo, useMemo, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
-import { addDays, DateKey, fromKey, MONTH_LABELS, startOfWeek, toKey, todayKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
+import { addDays, DateKey, fromKey, MONTH_LABELS, startOfWeek, toKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
+import { useToday } from '@/lib/useToday';
 import { useTheme, withAlpha } from '@/theme';
 
 type Props = {
@@ -123,7 +124,7 @@ export const Heatmap = memo(function Heatmap({
 }: Props) {
   const theme = useTheme();
   const [width, setWidth] = useState<number | null>(null);
-  const today = todayKey();
+  const today = useToday();
   const end = endKey ?? today;
   const labelWidth = showWeekdayLabels ? WEEKDAY_LABEL_WIDTH : 0;
   const fit = startKey == null;

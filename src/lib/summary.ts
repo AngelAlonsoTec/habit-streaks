@@ -112,7 +112,8 @@ export function occurrences(
     if (addDays(w, 6) < origin) continue;
     const count = weekCount(days, w);
     const met = quit ? count <= habit.goal.count : count >= habit.goal.count;
-    if (!met && !quit && w.getTime() === currentWeek.getTime()) continue;
+    // La semana en curso y la primera, si el hábito empezó a mitad, solo cuentan si se llegó a la meta.
+    if (!met && !quit && (w.getTime() === currentWeek.getTime() || w < origin)) continue;
     scheduled++;
     done += quit ? Number(met) : Math.min(count / habit.goal.count, 1);
   }

@@ -6,8 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarChart } from '@/components/BarChart';
 import { Heatmap, WeekdayLabels } from '@/components/Heatmap';
 import { Card, Segmented } from '@/components/ui';
-import { toKey, WEEKDAY_LABELS } from '@/lib/dates';
+import { fromKey, toKey, WEEKDAY_LABELS } from '@/lib/dates';
 import { Period, summarize } from '@/lib/summary';
+import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { IconName, useTheme } from '@/theme';
 
@@ -41,8 +42,12 @@ export default function SummaryScreen() {
   const heatmapScroll = useRef<ScrollView>(null);
 
   const habits = useMemo(() => allHabits.filter((h) => !h.archived), [allHabits]);
-  const summary = useMemo(() => summarize(habits, completions, period, offset), [habits, completions, period, offset]);
-  const today = new Date();
+  const todayKey = useToday();
+  const today = useMemo(() => fromKey(todayKey), [todayKey]);
+  const summary = useMemo(
+    () => summarize(habits, completions, period, offset, today),
+    [habits, completions, period, offset, today],
+  );
   const hasWeeklyGoals = habits.some((h) => h.goal.period === 'week');
 
   const delta = summary.rate != null && summary.previousRate != null ? summary.rate - summary.previousRate : null;

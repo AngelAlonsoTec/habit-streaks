@@ -323,8 +323,8 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
           <TextInput
             value={amountText}
             onChangeText={setAmountText}
-            onBlur={() => setAmount(parseAmount(amountText) ?? goal.count)}
-            onSubmitEditing={() => setAmount(parseAmount(amountText) ?? goal.count)}
+            onBlur={() => setAmount(parseAmount(amountText, quit) ?? goal.count)}
+            onSubmitEditing={() => setAmount(parseAmount(amountText, quit) ?? goal.count)}
             keyboardType="decimal-pad"
             returnKeyType="done"
             selectTextOnFocus

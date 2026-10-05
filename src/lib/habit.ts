@@ -186,16 +186,17 @@ export function formatAmount(n: number): string {
 }
 
 /**
- * Lee una cantidad escrita por el usuario: admite coma o punto decimal ("1,5", "1.5")
- * y punto o espacio de miles ("10.000", "10 000"). Devuelve null si no es un número positivo.
+ * Lee una cantidad escrita por el usuario: admite coma o punto decimal ("1,5", "1.5"), punto o
+ * espacio de miles ("10.000", "10 000"), un "+" delante y la unidad detrás ("+5", "2,5 km").
+ * Devuelve null si no es un número positivo (o 0, con `allowZero`, para los límites al dejar).
  */
-export function parseAmount(text: string): number | null {
-  let s = text.trim().replace(/\s/g, '');
+export function parseAmount(text: string, allowZero = false): number | null {
+  let s = text.trim().replace(/^\+/, '').replace(/\s*[a-záéíóúñ]+\.?$/i, '').replace(/\s/g, '');
   if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
   else if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   if (!/^(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const n = roundAmount(Number(s));
-  return n > 0 && n <= MAX_AMOUNT ? n : null;
+  return (n > 0 || (allowZero && n === 0)) && n <= MAX_AMOUNT ? n : null;
 }
 
 /** Unidades sugeridas en el asistente, con una meta diaria de partida y sus sumas rápidas. */

@@ -10,12 +10,13 @@ import { RecordSheet } from '@/components/RecordSheet';
 import { Card, Chip } from '@/components/ui';
 import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey, todayKey } from '@/lib/dates';
+import { DateKey, fromKey } from '@/lib/dates';
 import {
   dailyTarget, describeGoal, formatAmount, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
 } from '@/lib/habit';
 import { confirmAction, goBack, tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
+import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { useTheme } from '@/theme';
 
@@ -33,7 +34,8 @@ export default function HabitDetailScreen() {
   const heatmapScroll = useRef<ScrollView>(null);
   const [recordDay, setRecordDay] = useState<DateKey | null>(null);
 
-  const stats = useMemo(() => (habit ? computeStats(habit, counts) : null), [counts, habit]);
+  const today = useToday();
+  const stats = useMemo(() => (habit ? computeStats(habit, counts, fromKey(today)) : null), [counts, habit, today]);
   const isScheduled = useCallback((d: Date) => (habit ? isScheduledOn(habit, d) : true), [habit]);
   const level = useMemo(() => (habit ? quitLevel(habit, counts) : undefined), [habit, counts]);
 
@@ -155,7 +157,7 @@ export default function HabitDetailScreen() {
                 target={target}
                 isScheduled={isScheduled}
                 level={level}
-                startKey={monthStart(todayKey(), 11)}
+                startKey={monthStart(today, 11)}
                 cellSize={13}
                 showMonthLabels
               />

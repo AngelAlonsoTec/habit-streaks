@@ -11,8 +11,9 @@ import { RecordSheet } from '@/components/RecordSheet';
 import { Chip } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey, fromKey, todayKey } from '@/lib/dates';
+import { DateKey, fromKey } from '@/lib/dates';
 import { Habit, isDoneFor, isQuit, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
+import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { IconName, useTheme } from '@/theme';
 
@@ -49,8 +50,11 @@ export default function TodayScreen() {
   const showHeatmaps = useHabits((s) => s.settings.showHeatmaps);
   const updateSettings = useHabits((s) => s.updateSettings);
 
-  const today = todayKey();
-  const [selectedDay, setSelectedDay] = useState<DateKey>(today);
+  const today = useToday();
+  // null = "hoy", que sigue al día nuevo si pasa la medianoche con la app abierta.
+  const [pickedDay, setPickedDay] = useState<DateKey | null>(null);
+  const selectedDay = pickedDay ?? today;
+  const setSelectedDay = (day: DateKey) => setPickedDay(day === today ? null : day);
   const [category, setCategory] = useState<string | null>(null);
   const [menuHabit, setMenuHabit] = useState<Habit | null>(null);
   const [recordTarget, setRecordTarget] = useState<{ habit: Habit; day: DateKey } | null>(null);
