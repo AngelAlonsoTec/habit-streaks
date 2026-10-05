@@ -101,12 +101,15 @@ export default function TodayScreen() {
   const progress = scheduledCount ? doneCount / scheduledCount : 0;
   const isToday = selectedDay === today;
   const pending = scheduledCount - doneCount;
-  const message =
-    scheduledCount === 0
-      ? quitting.length ? 'Sin hábitos por hacer este día' : 'Nada programado para este día'
-      : pending === 0
-        ? 'Día completado'
-        : `Te ${pending === 1 ? 'falta' : 'faltan'} ${pending} para completar el día`;
+  const dayOff = scheduledCount === 0;
+  const dayDone = !dayOff && pending === 0;
+  const message = dayOff
+    ? quitting.length
+      ? `${isToday ? 'Hoy solo toca' : 'Ese día solo tocaba'} evitar lo que estás dejando`
+      : 'Nada programado para este día'
+    : dayDone
+      ? isToday ? '¡Lo hiciste todo hoy!' : 'Cumpliste todo lo de este día'
+      : `Te ${pending === 1 ? 'falta' : 'faltan'} ${pending} para completar el día`;
 
   return (
     <>
@@ -150,12 +153,20 @@ export default function TodayScreen() {
 
             <View style={[styles.summary, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <ProgressRing size={62} strokeWidth={7} progress={progress} color={theme.primary} trackColor={theme.surface}>
-                <Text style={[styles.percent, { color: theme.text }]}>{Math.round(progress * 100)}%</Text>
+                {dayOff ? (
+                  <Ionicons name="cafe-outline" size={24} color={theme.muted} />
+                ) : dayDone ? (
+                  <Ionicons name="trophy" size={26} color={theme.primary} accessibilityLabel="Día completado" />
+                ) : (
+                  <Text style={[styles.percent, { color: theme.text }]}>{Math.round(progress * 100)}%</Text>
+                )}
               </ProgressRing>
               <View style={styles.summaryText}>
                 <Text style={[styles.date, { color: theme.muted }]}>{fullDate(selectedDay)}</Text>
                 <Text style={[styles.progressText, { color: theme.text }]}>
-                  {doneCount} de {scheduledCount} completados
+                  {dayOff
+                    ? quitting.length ? 'Nada por hacer' : 'Día libre'
+                    : dayDone ? 'Día completado' : `${doneCount} de ${scheduledCount} completados`}
                 </Text>
                 <Text style={[styles.message, { color: theme.muted }]}>{message}</Text>
                 {quitting.length > 0 && (

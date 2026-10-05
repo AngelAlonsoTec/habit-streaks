@@ -21,6 +21,9 @@ import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { useTheme } from '@/theme';
 
+/** Alto aproximado del encabezado con el icono y el nombre. */
+const HERO_HEIGHT = 64;
+
 export default function HabitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -34,6 +37,8 @@ export default function HabitDetailScreen() {
   const deleteHabit = useHabits((s) => s.deleteHabit);
   const heatmapScroll = useRef<ScrollView>(null);
   const [recordDay, setRecordDay] = useState<DateKey | null>(null);
+  // El nombre pasa a la cabecera cuando el grande del principio sale de la pantalla.
+  const [titleShown, setTitleShown] = useState(false);
 
   const today = useToday();
   const stats = useMemo(() => (habit ? computeStats(habit, counts, fromKey(today)) : null), [counts, habit, today]);
@@ -91,7 +96,7 @@ export default function HabitDetailScreen() {
     <>
       <Stack.Screen
         options={{
-          title: '',
+          title: titleShown ? habit.name : '',
           headerRight: () => (
             <Pressable
               onPress={onEdit}
@@ -103,7 +108,14 @@ export default function HabitDetailScreen() {
           ),
         }}
       />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          const shown = e.nativeEvent.contentOffset.y > HERO_HEIGHT;
+          if (shown !== titleShown) setTitleShown(shown);
+        }}
+      >
         <View style={styles.hero}>
           <View style={[styles.heroIcon, { backgroundColor: habit.color }]}>
             <Ionicons name={habit.icon} size={30} color="#FFFFFF" />
@@ -122,6 +134,15 @@ export default function HabitDetailScreen() {
             )}
           </View>
         </View>
+
+        {habit.archived && (
+          <View style={[styles.archived, { backgroundColor: theme.surface }]}>
+            <Ionicons name="archive-outline" size={18} color={theme.muted} />
+            <Text style={[styles.archivedText, { color: theme.muted }]}>
+              Archivado: no aparece en Hoy ni envía recordatorios. Puedes restaurarlo abajo.
+            </Text>
+          </View>
+        )}
 
         {categories.length > 0 && (
           <View style={styles.wrap}>
@@ -204,11 +225,8 @@ export default function HabitDetailScreen() {
           />
         </Card>
 
+        {/* Editar está en la cabecera; aquí quedan las acciones que sacan el hábito de Hoy. */}
         <View style={styles.actions}>
-          <Pressable onPress={onEdit} style={[styles.action, { backgroundColor: theme.surface }]}>
-            <Ionicons name="create-outline" size={18} color={theme.text} />
-            <Text style={[styles.actionText, { color: theme.text }]}>Editar</Text>
-          </Pressable>
           <Pressable onPress={onArchive} style={[styles.action, { backgroundColor: theme.surface }]}>
             <Ionicons name={habit.archived ? 'arrow-undo-outline' : 'archive-outline'} size={18} color={theme.text} />
             <Text style={[styles.actionText, { color: theme.text }]}>{habit.archived ? 'Restaurar' : 'Archivar'}</Text>
@@ -231,6 +249,8 @@ const styles = StyleSheet.create({
   heroText: { flex: 1, gap: 3 },
   heroName: { fontSize: 24, fontWeight: '800' },
   heroMeta: { fontSize: 14 },
+  archived: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14 },
+  archivedText: { flex: 1, fontSize: 13, lineHeight: 18 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

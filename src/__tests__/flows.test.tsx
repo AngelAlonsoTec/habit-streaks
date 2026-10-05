@@ -4,7 +4,7 @@ import path from 'path';
 import { makeHabit } from '@/testing/fixtures';
 import { addDays, toKey, weekdayIndex } from '@/lib/dates';
 import { Habit } from '@/lib/habit';
-import { Alert, AlertButton } from 'react-native';
+import { Alert, AlertButton, ScrollView } from 'react-native';
 
 import { useHabits } from '@/store/habits';
 
@@ -156,7 +156,8 @@ describe('flujos de la app', () => {
     expect(await screen.findByText('Sin recaídas hoy')).toBeTruthy();
     expect(screen.getByText('Dejar')).toBeTruthy();
     expect(screen.getByText('1 de 1 dentro del límite')).toBeTruthy();
-    expect(screen.getByText('Sin hábitos por hacer este día')).toBeTruthy();
+    expect(screen.getByText('Nada por hacer')).toBeTruthy();
+    expect(screen.getByText('Hoy solo toca evitar lo que estás dejando')).toBeTruthy();
 
     // Tocar no registra nada directamente: abre el panel.
     fireEvent.press(screen.getByLabelText('Registrar Dejar de fumar'));
@@ -312,7 +313,7 @@ describe('flujos de la app', () => {
     expect(useHabits.getState().completions.h1?.[today]).toBe(1);
     expect(screen.getAllByText('1 día').length).toBeGreaterThan(0);
 
-    fireEvent.press(screen.getByText('Editar'));
+    fireEvent.press(screen.getByLabelText('Editar hábito'));
     await waitFor(() => expect(screen).toHavePathname('/habit/h1/edit'));
     fireEvent.press(screen.getByText('Guardar cambios'));
     await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
@@ -433,6 +434,51 @@ describe('flujos de la app', () => {
     await waitFor(() => expect(titles()).toEqual(['5 km', 'Media maratón (21 km)']));
     expect(useHabits.getState().habits).toHaveLength(1); // el hábito sigue ahí
     jest.restoreAllMocks();
+  });
+
+  it('Hoy celebra el día completado y distingue un día libre', async () => {
+    const todayIdx = weekdayIndex(new Date());
+    seed({ name: 'Leer' }, { name: 'Pesas', days: [(todayIdx + 1) % 7] });
+    useHabits.getState().setCompletion('h1', toKey(new Date()), 1);
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('Día completado')).toBeTruthy();
+    expect(screen.getByText('¡Lo hiciste todo hoy!')).toBeTruthy();
+    expect(screen.getByLabelText('Día completado')).toBeTruthy(); // el trofeo del anillo
+  });
+
+  it('un día sin nada programado es un día libre', async () => {
+    const todayIdx = weekdayIndex(new Date());
+    seed({ name: 'Pesas', days: [(todayIdx + 1) % 7] });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('Día libre')).toBeTruthy();
+    expect(screen.getByText('Nada programado para este día')).toBeTruthy();
+    expect(screen.queryByText(/de 0 completados/)).toBeNull();
+  });
+
+  it('detalle: el nombre pasa a la cabecera al desplazarse y Editar solo está arriba', async () => {
+    seed({ name: 'Leer mucho' });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('Racha actual')).toBeTruthy();
+    expect(screen.queryByText('Editar')).toBeNull();
+    expect(screen.getByLabelText('Editar hábito')).toBeTruthy();
+    // La cabecera nativa recibe el título como propiedad, no como texto.
+    const headerTitled = () => screen.UNSAFE_queryAllByProps({ title: 'Leer mucho' }).length > 0;
+    expect(headerTitled()).toBe(false);
+    fireEvent.scroll(screen.UNSAFE_getAllByType(ScrollView)[0], { nativeEvent: { contentOffset: { x: 0, y: 300 } } });
+    await waitFor(() => expect(headerTitled()).toBe(true));
+    fireEvent.scroll(screen.UNSAFE_getAllByType(ScrollView)[0], { nativeEvent: { contentOffset: { x: 0, y: 0 } } });
+    await waitFor(() => expect(headerTitled()).toBe(false));
+  });
+
+  it('archivados: la fila abre el detalle, que avisa de que está archivado', async () => {
+    seed({ name: 'Piano', archived: true });
+    useHabits.getState().setCompletion('h1', '2026-01-01', 1);
+    renderRouter(APP_DIR, { initialUrl: '/archived' });
+    expect(await screen.findByText(/^Todos los días · mejor racha: 1 día$/)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ver Piano'));
+    await waitFor(() => expect(screen).toHavePathname('/habit/h1'));
+    expect(await screen.findByText(/^Archivado:/)).toBeTruthy();
+    expect(screen.getByText('Restaurar')).toBeTruthy();
   });
 
   it('una URL de hábito inexistente no rompe la app', async () => {
