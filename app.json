@@ -63,6 +63,13 @@
     "scheme": "habitstreaks",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3406bf65-45a9-4c84-beff-4ee56bb2fbdf"
+      }
+    },
+    "owner": "antitaaas-team"
   }
 }
