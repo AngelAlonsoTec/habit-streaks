@@ -65,3 +65,12 @@ export function formatShortDate(key: DateKey, today: DateKey = todayKey()): stri
   const text = `${d.getDate()} ${MONTH_LABELS[d.getMonth()].toLowerCase()}`;
   return d.getFullYear() === fromKey(today).getFullYear() ? text : `${text} ${d.getFullYear()}`;
 }
+
+/** Título corto de un día cercano: "Hoy", "Ayer" o "Viernes 2". */
+export function formatDayTitle(key: DateKey, today: DateKey = todayKey()): string {
+  if (key === today) return 'Hoy';
+  if (key === toKey(addDays(fromKey(today), -1))) return 'Ayer';
+  const d = fromKey(key);
+  const weekday = d.toLocaleDateString('es-ES', { weekday: 'long' });
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d.getDate()}`;
+}

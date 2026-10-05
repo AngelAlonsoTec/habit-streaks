@@ -188,6 +188,21 @@ export function formatAmount(n: number): string {
   return roundAmount(n).toLocaleString('es-ES', { maximumFractionDigits: 2 });
 }
 
+/** Total legible con su unidad; los minutos pasan a horas: 1275 min → "21 h 15 min". */
+export function formatQuantity(value: number, unit: string): string {
+  if (unit !== 'min' || value < 60) return `${formatAmount(value)} ${unit}`;
+  const minutes = Math.round(value);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${formatAmount(h)} h ${m} min` : `${formatAmount(h)} h`;
+}
+
+/** Para espacios pequeños (barras): los minutos en horas con un decimal ("3,5 h"); el resto, solo el número. */
+export function formatCompact(value: number, unit: string | null): string {
+  if (unit === 'min' && value >= 60) return `${formatAmount(Math.round(value / 6) / 10)} h`;
+  return formatAmount(value);
+}
+
 /**
  * Lee una cantidad escrita por el usuario: admite coma o punto decimal ("1,5", "1.5"), punto o
  * espacio de miles ("10.000", "10 000"), un "+" delante y la unidad detrás ("+5", "2,5 km").

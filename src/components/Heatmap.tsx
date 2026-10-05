@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
-import { addDays, DateKey, fromKey, MONTH_LABELS, startOfWeek, toKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
+import { addDays, DateKey, fromKey, MONTH_LABELS, startOfWeek, toKey, WEEKDAY_LABELS } from '@/lib/dates';
 import { useToday } from '@/lib/useToday';
 import { useTheme, withAlpha } from '@/theme';
 
@@ -23,6 +23,8 @@ type Props = {
   showWeekdayLabels?: boolean;
   /** Último día que se dibuja (por defecto hoy). */
   endKey?: DateKey;
+  /** Día que se marca con un contorno (por defecto hoy; p. ej., el día pasado que se está editando). */
+  markKey?: DateKey;
 };
 
 export type HeatmapCell = { key: DateKey; date: Date };
@@ -121,11 +123,13 @@ export const Heatmap = memo(function Heatmap({
   showMonthLabels = false,
   showWeekdayLabels = false,
   endKey,
+  markKey,
 }: Props) {
   const theme = useTheme();
   const [width, setWidth] = useState<number | null>(null);
   const today = useToday();
   const end = endKey ?? today;
+  const mark = markKey ?? today;
   const labelWidth = showWeekdayLabels ? WEEKDAY_LABEL_WIDTH : 0;
   const fit = startKey == null;
 
@@ -153,10 +157,10 @@ export const Heatmap = memo(function Heatmap({
 
   // Agrupamos las celdas por color: un solo <Path> por color en vez de cientos de vistas.
   // Los días en que se superó el límite van aparte: contorno rojo hueco, distinguible con cualquier color.
-  const { paths, over, todayOver } = useMemo(() => {
+  const { paths, over, markPos } = useMemo(() => {
     const byColor = new Map<string, string[]>();
     const overRects: string[] = [];
-    let isTodayOver = false;
+    let marked: { x: number; y: number } | null = null;
     const r = Math.max(1.5, size * 0.25);
     const inset = OVER_STROKE_RATIO * size / 2;
     blocks.forEach((block, b) =>
@@ -166,9 +170,10 @@ export const Heatmap = memo(function Heatmap({
           const scheduled = isScheduled ? isScheduled(cell.date) : true;
           const count = counts?.[cell.key] ?? 0;
           const progress = level ? level(cell.date, count) : count / target;
+          // El contorno del día marcado no tapa el aro rojo de un día con el límite superado.
+          if (cell.key === mark && progress >= 0) marked = { x: offsets[b] + c * step, y: d * step };
           if (progress < 0) {
             overRects.push(roundedRect(offsets[b] + c * step + inset, d * step + inset, size - 2 * inset, Math.max(1, r - inset)));
-            if (cell.key === today) isTodayOver = true;
             return;
           }
           const fill = cellColor(color, theme.emptyAlpha, progress, scheduled);
@@ -181,16 +186,11 @@ export const Heatmap = memo(function Heatmap({
     return {
       paths: [...byColor.entries()].map(([fill, rects]) => ({ fill, d: rects.join('') })),
       over: overRects.join(''),
-      todayOver: isTodayOver,
+      markPos: marked as { x: number; y: number } | null,
     };
-  }, [blocks, offsets, counts, color, target, isScheduled, level, theme.emptyAlpha, today, size, step]);
+  }, [blocks, offsets, counts, color, target, isScheduled, level, theme.emptyAlpha, mark, size, step]);
 
   const lastBlock = blocks.length - 1;
-  // Si termina hoy, hoy está en la última columna del último mes, en la fila de su día.
-  const todayPos =
-    blocks.length > 0 && end === today && !todayOver
-      ? { x: offsets[lastBlock] + (blocks[lastBlock].columns.length - 1) * step, y: weekdayIndex(fromKey(today)) * step }
-      : null;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = Math.floor(e.nativeEvent.layout.width);
@@ -246,10 +246,10 @@ export const Heatmap = memo(function Heatmap({
               <Path key={p.fill} d={p.d} fill={p.fill} />
             ))}
             {over ? <Path d={over} fill="none" stroke={theme.danger} strokeWidth={OVER_STROKE_RATIO * size} /> : null}
-            {todayPos && (
+            {markPos && (
               <Rect
-                x={todayPos.x + 0.75}
-                y={todayPos.y + 0.75}
+                x={markPos.x + 0.75}
+                y={markPos.y + 0.75}
                 width={size - 1.5}
                 height={size - 1.5}
                 rx={radius}

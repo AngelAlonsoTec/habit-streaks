@@ -5,18 +5,24 @@ export type Period = 'week' | 'month' | 'quarter' | 'year';
 
 export type PeriodRange = { start: Date; end: Date; label: string };
 
-/** Veces que tocaba hacer un hábito y cuántas se cumplieron (fraccionario en metas semanales). */
-export type Occurrences = { scheduled: number; done: number };
+/**
+ * Veces que tocaba hacer un hábito y cuántas se cumplieron (fraccionario en metas semanales).
+ * `pending`: lo que aún está en curso (hoy, o la semana actual) y todavía no cuenta ni a favor ni en contra.
+ */
+export type Occurrences = { scheduled: number; done: number; pending: number };
 
 export type SummaryBucket = { label: string; rate: number | null; current: boolean };
 
-export type HabitSummary = { habit: Habit; rate: number | null } & Occurrences;
+/** `total`: lo registrado en el periodo (veces, cantidad o recaídas, según el hábito). */
+export type HabitSummary = { habit: Habit; rate: number | null; total: number } & Occurrences;
 
 export type Summary = {
   range: PeriodRange;
   /** Cumplimiento 0-100, o null si en el periodo no tocaba nada. */
   rate: number | null;
   previousRate: number | null;
+  /** Hábitos de hoy (o de la semana en curso) aún pendientes: todavía no cuentan en `rate`. */
+  pending: number;
   /**
    * Veces completado (suma de repeticiones; en hábitos cuantitativos, un día con registro cuenta una vez).
    * Los hábitos para dejar no suman: registrar una recaída no es completar nada.
@@ -76,9 +82,10 @@ export function periodRange(period: Period, offset: number, today: Date): Period
 }
 
 /**
- * Veces que tocaba el hábito entre `from` y `to` (hasta hoy) y cuántas se cumplieron.
- * Hoy sin hacer no cuenta como fallo (al dejar un hábito, pasarse del límite hoy sí). Las metas semanales cuentan cada semana cuyo lunes
- * cae en el rango; con `dailyOnly` se ignoran (para gráficas por día).
+ * Veces que tocaba el hábito entre `from` y `to` (hasta hoy) y cuántas se cumplieron. Hoy sin
+ * hacer no cuenta como fallo, sino como pendiente (al dejar un hábito, pasarse del límite hoy sí
+ * es fallo). Las metas semanales cuentan cada semana cuyo lunes cae en el rango; con `dailyOnly`
+ * se ignoran (para gráficas por día).
  */
 export function occurrences(
   habit: Habit,
@@ -93,6 +100,7 @@ export function occurrences(
   const quit = isQuit(habit);
   let scheduled = 0;
   let done = 0;
+  let pending = 0;
 
   if (habit.goal.period === 'day') {
     const start = from > origin ? from : origin;
@@ -100,14 +108,17 @@ export function occurrences(
     for (let d = start; d <= end; d = addDays(d, 1)) {
       if (!isScheduledOn(habit, d)) continue;
       const complete = isDayComplete(habit, days?.[toKey(d)]);
-      if (!complete && !quit && d.getTime() === t.getTime()) continue;
+      if (!complete && !quit && d.getTime() === t.getTime()) {
+        pending++;
+        continue;
+      }
       scheduled++;
       if (complete) done++;
     }
-    return { scheduled, done };
+    return { scheduled, done, pending };
   }
 
-  if (dailyOnly) return { scheduled, done };
+  if (dailyOnly) return { scheduled, done, pending };
   const firstMonday = weekdayIndex(from) === 0 ? from : addDays(startOfWeek(from), 7);
   const currentWeek = startOfWeek(t);
   for (let w = firstMonday; w <= to && w <= t; w = addDays(w, 7)) {
@@ -115,11 +126,14 @@ export function occurrences(
     const count = weekCount(days, w);
     const met = quit ? count <= habit.goal.count : count >= habit.goal.count;
     // La semana en curso y la primera, si el hábito empezó a mitad, solo cuentan si se llegó a la meta.
-    if (!met && !quit && (w.getTime() === currentWeek.getTime() || w < origin)) continue;
+    if (!met && !quit && (w.getTime() === currentWeek.getTime() || w < origin)) {
+      if (w.getTime() === currentWeek.getTime()) pending++;
+      continue;
+    }
     scheduled++;
     done += quit ? Number(met) : Math.min(count / habit.goal.count, 1);
   }
-  return { scheduled, done };
+  return { scheduled, done, pending };
 }
 
 /** Día de inicio de cada hábito, calculado una vez (evita reordenar sus registros en cada consulta). */
@@ -131,9 +145,9 @@ function sumOccurrences(
   return habits.reduce<Occurrences>(
     (acc, h) => {
       const o = occurrences(h, completions[h.id], from, to, today, dailyOnly, origins.get(h.id));
-      return { scheduled: acc.scheduled + o.scheduled, done: acc.done + o.done };
+      return { scheduled: acc.scheduled + o.scheduled, done: acc.done + o.done, pending: acc.pending + o.pending };
     },
-    { scheduled: 0, done: 0 },
+    { scheduled: 0, done: 0, pending: 0 },
   );
 }
 
@@ -190,11 +204,13 @@ export function summarize(
 
   const perHabit: HabitSummary[] = habits.map((h) => {
     const o = occurrences(h, completions[h.id], range.start, range.end, t, false, origins.get(h.id));
-    return { habit: h, ...o, rate: toRate(o) };
+    let registered = 0;
+    for (let d = range.start; d <= end; d = addDays(d, 1)) registered += completions[h.id]?.[toKey(d)] ?? 0;
+    return { habit: h, ...o, rate: toRate(o), total: registered };
   });
   const total = perHabit.reduce<Occurrences>(
-    (acc, h) => ({ scheduled: acc.scheduled + h.scheduled, done: acc.done + h.done }),
-    { scheduled: 0, done: 0 },
+    (acc, h) => ({ scheduled: acc.scheduled + h.scheduled, done: acc.done + h.done, pending: acc.pending + h.pending }),
+    { scheduled: 0, done: 0, pending: 0 },
   );
 
   let completionsCount = 0;
@@ -202,13 +218,13 @@ export function summarize(
   let activeDays = 0;
   let elapsedDays = 0;
   const dailyRates: Record<DateKey, number> = {};
-  const weekday = Array.from({ length: 7 }, () => ({ scheduled: 0, done: 0 }));
+  const weekday = Array.from({ length: 7 }, () => ({ scheduled: 0, done: 0, pending: 0 }));
 
   for (let d = range.start; d <= end; d = addDays(d, 1)) {
     elapsedDays++;
     const key = toKey(d);
     let dayCount = 0;
-    const day = { scheduled: 0, done: 0 };
+    const day = { scheduled: 0, done: 0, pending: 0 };
     // Hábitos de hoy aún sin hacer: no cuentan como fallo, pero el día todavía no es perfecto.
     let pendingToday = 0;
     for (const h of habits) {
@@ -235,6 +251,7 @@ export function summarize(
   return {
     range,
     rate: toRate(total),
+    pending: total.pending,
     previousRate: toRate(sumOccurrences(habits, completions, origins, prev.start, prev.end, t)),
     completions: completionsCount,
     perfectDays,

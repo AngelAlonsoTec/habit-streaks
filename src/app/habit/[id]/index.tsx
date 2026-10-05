@@ -13,7 +13,7 @@ import { WeekdayChart } from '@/components/WeekdayChart';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { DateKey, fromKey } from '@/lib/dates';
 import {
-  dailyTarget, describeGoal, formatAmount, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
+  dailyTarget, describeGoal, formatCompact, formatQuantity, isQuantity, isQuit, isScheduledOn, quitLevel, TIME_OF_DAY,
 } from '@/lib/habit';
 import { confirmAction, goBack, tapFeedback } from '@/lib/platform';
 import { computeStats, streakLabel } from '@/lib/stats';
@@ -82,8 +82,8 @@ export default function HabitDetailScreen() {
         value: String(stats.overLimit),
         icon: 'alert-circle' as const,
       }
-      : quantity
-        ? { label: 'Total registrado', value: `${formatAmount(stats.total)} ${habit.unit}`, icon: 'checkmark-done' as const }
+      : habit.unit != null
+        ? { label: 'Total registrado', value: formatQuantity(stats.total, habit.unit), icon: 'checkmark-done' as const }
         : { label: 'Veces completado', value: String(stats.total), icon: 'checkmark-done' as const },
   ];
 
@@ -197,7 +197,11 @@ export default function HabitDetailScreen() {
 
         <Card style={styles.cardGap}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{quit ? 'Días con más registros' : 'Tus mejores días'}</Text>
-          <WeekdayChart counts={stats.weekdayCounts} color={quit ? theme.danger : habit.color} />
+          <WeekdayChart
+            counts={stats.weekdayCounts}
+            color={quit ? theme.danger : habit.color}
+            formatValue={(n) => formatCompact(n, habit.unit)}
+          />
         </Card>
 
         <View style={styles.actions}>

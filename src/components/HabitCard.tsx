@@ -150,7 +150,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
       {/* Siempre montado (salvo en días de descanso) y solo oculto: así alternar la vista compacta es instantáneo. */}
       {!dimmed && (
         <View style={!showHeatmap && styles.hidden}>
-          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} cellSize={10} showMonthLabels />
+          <Heatmap counts={counts} color={habit.color} target={target} isScheduled={isScheduled} level={level} markKey={day} cellSize={10} showMonthLabels />
         </View>
       )}
     </Pressable>

@@ -11,7 +11,7 @@ import { RecordSheet } from '@/components/RecordSheet';
 import { Chip } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
-import { DateKey, fromKey } from '@/lib/dates';
+import { DateKey, formatDayTitle, fromKey } from '@/lib/dates';
 import { Habit, isDoneFor, isQuit, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
@@ -36,7 +36,8 @@ function HeaderButton({ icon, label, onPress }: { icon: IconName; label: string;
 /** Espacio bajo la lista para que el botón flotante no tape la última tarjeta. */
 const FAB_SPACE = 104;
 
-function formatDay(key: DateKey): string {
+/** "Viernes, 2 de octubre". */
+function fullDate(key: DateKey): string {
   const text = fromKey(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
@@ -112,7 +113,9 @@ export default function TodayScreen() {
       {/* Encabezado propio (no el nativo): en Android los botones del header nativo dejan de
           responder mientras la barra anima el cambio de icono. */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-        <Text style={[styles.title, { color: theme.text }]}>{isToday ? 'Hoy' : 'Registro'}</Text>
+        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+          {formatDayTitle(selectedDay, today)}
+        </Text>
         <View style={styles.headerButtons}>
           {archivedCount > 0 && (
             <HeaderButton icon="archive-outline" label="Hábitos archivados" onPress={() => router.push('/archived')} />
@@ -150,7 +153,7 @@ export default function TodayScreen() {
                 <Text style={[styles.percent, { color: theme.text }]}>{Math.round(progress * 100)}%</Text>
               </ProgressRing>
               <View style={styles.summaryText}>
-                <Text style={[styles.date, { color: theme.muted }]}>{formatDay(selectedDay)}</Text>
+                <Text style={[styles.date, { color: theme.muted }]}>{fullDate(selectedDay)}</Text>
                 <Text style={[styles.progressText, { color: theme.text }]}>
                   {doneCount} de {scheduledCount} completados
                 </Text>
@@ -171,11 +174,13 @@ export default function TodayScreen() {
             </View>
 
             {!isToday && (
-              <Pressable onPress={() => setSelectedDay(today)} style={[styles.backToday, { backgroundColor: theme.surface }]}>
-                <Ionicons name="return-down-back" size={16} color={theme.text} />
-                <Text style={[styles.backTodayText, { color: theme.text }]}>
-                  Estás editando un día pasado · Volver a hoy
-                </Text>
+              <Pressable
+                onPress={() => setSelectedDay(today)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.backToday, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Ionicons name="return-down-back" size={15} color={theme.text} />
+                <Text style={[styles.backTodayText, { color: theme.text }]}>Volver a hoy</Text>
               </Pressable>
             )}
 
@@ -256,7 +261,7 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 12 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 4 },
-  title: { fontSize: 30, fontWeight: '800' },
+  title: { fontSize: 30, fontWeight: '800', flexShrink: 1 },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   summary: {
@@ -270,8 +275,8 @@ const styles = StyleSheet.create({
   message: { fontSize: 13 },
   quitLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   backToday: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 10, borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999,
   },
   backTodayText: { fontSize: 13, fontWeight: '600' },
   chips: { gap: 8, paddingVertical: 2 },

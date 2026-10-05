@@ -395,3 +395,60 @@ describe('objetivos en la vida real', () => {
     expect(await screen.findByText(/márcate hitos/)).toBeTruthy();
   });
 });
+
+describe('textos de la interfaz', () => {
+  it('al ver un día pasado el título es la fecha y "Volver a hoy" regresa', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 5, 12), advanceTimers: true });
+    seed({ name: 'Leer', createdAt: iso(2026, 9, 1) });
+    renderRouter(APP_DIR, { initialUrl: '/' });
+    expect(await screen.findByText('Hoy')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ver 2026-10-04'));
+    expect(await screen.findByText('Ayer')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ver 2026-09-30'));
+    expect(await screen.findByText('Miércoles 30')).toBeTruthy();
+    expect(screen.queryByText('Registro')).toBeNull();
+    fireEvent.press(screen.getByText('Volver a hoy'));
+    expect(await screen.findByText('Hoy')).toBeTruthy();
+    expect(screen.queryByText('Volver a hoy')).toBeNull();
+  });
+
+  it('resumen de un lunes por la mañana: pendiente, no "no tocaba"', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 5, 9), advanceTimers: true });
+    seed(
+      { name: 'Leer', createdAt: iso(2026, 9, 1) },
+      { name: 'Paseo largo', days: [5, 6], createdAt: iso(2026, 9, 1) }, // solo fines de semana
+      { name: 'Gimnasio', goal: { period: 'week', count: 3 }, createdAt: iso(2026, 9, 1) },
+    );
+    renderRouter(APP_DIR, { initialUrl: '/summary' });
+    expect(await screen.findByText('Pendiente hoy')).toBeTruthy();
+    expect(screen.getByText('Semana en curso')).toBeTruthy();
+    expect(screen.getByText('No tocaba en este periodo')).toBeTruthy();
+    expect(screen.getByText('Aún no hay días cerrados: lo de hoy cuenta en cuanto lo hagas.')).toBeTruthy();
+  });
+
+  it('el resumen da totales legibles y la parte de las semanas con coma', async () => {
+    jest.useFakeTimers({ now: at(2026, 10, 5, 9), advanceTimers: true });
+    seed(
+      { name: 'Inglés', unit: 'min', goal: { period: 'day', count: 30 }, createdAt: iso(2026, 9, 1) },
+      { name: 'Correr', unit: 'km', goal: { period: 'week', count: 10 }, createdAt: iso(2026, 8, 1) },
+    );
+    useHabits.setState({
+      completions: {
+        h1: { '2026-09-28': 600, '2026-09-29': 675 },
+        h2: { '2026-09-07': 10, '2026-09-14': 5 },
+      },
+    });
+    renderRouter(APP_DIR, { initialUrl: '/summary' });
+    fireEvent.press(await screen.findByText('Mes'));
+    fireEvent.press(screen.getByLabelText('Periodo anterior'));
+    expect(await screen.findByText(/· 21 h 15 min$/)).toBeTruthy();
+    expect(screen.getByText(/^1,5 de 4 semanas/)).toBeTruthy();
+  });
+
+  it('el detalle muestra el total en horas', async () => {
+    seed({ name: 'Inglés', unit: 'min', goal: { period: 'day', count: 30 } });
+    useHabits.setState({ completions: { h1: { '2026-09-28': 600, '2026-09-29': 675 } } });
+    renderRouter(APP_DIR, { initialUrl: '/habit/h1' });
+    expect(await screen.findByText('21 h 15 min')).toBeTruthy();
+  });
+});

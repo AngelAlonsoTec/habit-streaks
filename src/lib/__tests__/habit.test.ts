@@ -1,7 +1,7 @@
 import { counts, makeHabit } from '@/testing/fixtures';
 import { fromKey } from '../dates';
 import {
-  dailyTarget, dayLevel, describeGoal, quitLevel, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
+  dailyTarget, dayLevel, describeGoal, formatCompact, formatQuantity, quitLevel, describeProgress, formatAmount, isDoneFor, isScheduledOn, parseAmount, quickSteps, weekCount,
 } from '../habit';
 
 describe('reglas de hábito', () => {
@@ -138,5 +138,28 @@ describe('hábitos para dejar', () => {
     expect(describeProgress(smoke, 2, 0)).toBe('2 recaídas');
     expect(describeProgress(coffee, 1, 2)).toBe('1 / máx. 2');
     expect(describeProgress(makeHabit({ kind: 'quit', unit: 'min' }), 45, 60)).toBe('45 / máx. 60 min');
+  });
+});
+
+describe('totales legibles', () => {
+  it('los minutos pasan a horas a partir de 60', () => {
+    expect(formatQuantity(45, 'min')).toBe('45 min');
+    expect(formatQuantity(60, 'min')).toBe('1 h');
+    expect(formatQuantity(1275, 'min')).toBe('21 h 15 min');
+    expect(formatQuantity(119.6, 'min')).toBe('2 h'); // redondea antes de partir: nunca "1 h 60 min"
+    expect(formatQuantity(600_000, 'min')).toBe('10.000 h'); // en español, el punto de millar va desde 5 cifras
+  });
+
+  it('el resto de unidades, tal cual en formato español', () => {
+    expect(formatQuantity(12.5, 'km')).toBe('12,5 km');
+    expect(formatQuantity(10000, 'pasos')).toBe('10.000 pasos');
+    expect(formatQuantity(90, 'h')).toBe('90 h');
+  });
+
+  it('en compacto (barras): horas con un decimal, o solo el número', () => {
+    expect(formatCompact(210, 'min')).toBe('3,5 h');
+    expect(formatCompact(45, 'min')).toBe('45');
+    expect(formatCompact(12.25, 'km')).toBe('12,25');
+    expect(formatCompact(3, null)).toBe('3');
   });
 });

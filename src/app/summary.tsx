@@ -7,7 +7,8 @@ import { BarChart } from '@/components/BarChart';
 import { Heatmap, WeekdayLabels } from '@/components/Heatmap';
 import { Card, Segmented } from '@/components/ui';
 import { fromKey, toKey, WEEKDAY_LABELS } from '@/lib/dates';
-import { Period, summarize } from '@/lib/summary';
+import { formatAmount, formatQuantity, isQuit } from '@/lib/habit';
+import { HabitSummary, Period, summarize } from '@/lib/summary';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { IconName, useTheme } from '@/theme';
@@ -111,7 +112,18 @@ export default function SummaryScreen() {
               </View>
             ) : (
               <Text style={[styles.hint, { color: theme.muted }]}>
-                {summary.rate == null ? 'No había hábitos programados en este periodo.' : `Sin datos ${withPreposition('de', period)}.`}
+                {summary.rate != null
+                  ? `Sin datos ${withPreposition('de', period)}.`
+                  : summary.pending > 0
+                    ? 'Aún no hay días cerrados: lo de hoy cuenta en cuanto lo hagas.'
+                    : 'No había hábitos programados en este periodo.'}
+              </Text>
+            )}
+            {summary.rate != null && summary.pending > 0 && (
+              <Text style={[styles.hint, { color: theme.muted }]}>
+                {summary.pending === 1
+                  ? 'Te queda 1 pendiente, que aún no cuenta.'
+                  : `Te quedan ${summary.pending} pendientes, que aún no cuentan.`}
               </Text>
             )}
           </Card>
@@ -176,29 +188,26 @@ export default function SummaryScreen() {
 
           <Card style={styles.cardGap}>
             <Text style={[styles.cardTitle, { color: theme.text }]}>Por hábito</Text>
-            {summary.habits.map(({ habit, rate, scheduled, done }) => (
-              <View key={habit.id} style={styles.habitRow}>
-                <View style={[styles.habitIcon, { backgroundColor: habit.color + theme.emptyAlpha }]}>
-                  <Ionicons name={habit.icon} size={18} color={habit.color} />
-                </View>
-                <View style={styles.habitBody}>
-                  <View style={styles.habitHeader}>
-                    <Text style={[styles.habitName, { color: theme.text }]} numberOfLines={1}>{habit.name}</Text>
-                    <Text style={[styles.habitRate, { color: theme.text }]}>{rate == null ? '—' : `${rate} %`}</Text>
+            {summary.habits.map((row) => {
+              const { habit, rate } = row;
+              return (
+                <View key={habit.id} style={styles.habitRow}>
+                  <View style={[styles.habitIcon, { backgroundColor: habit.color + theme.emptyAlpha }]}>
+                    <Ionicons name={habit.icon} size={18} color={habit.color} />
                   </View>
-                  <View style={[styles.progressTrack, { backgroundColor: habit.color + theme.emptyAlpha }]}>
-                    <View style={[styles.progressFill, { width: `${rate ?? 0}%`, backgroundColor: habit.color }]} />
+                  <View style={styles.habitBody}>
+                    <View style={styles.habitHeader}>
+                      <Text style={[styles.habitName, { color: theme.text }]} numberOfLines={1}>{habit.name}</Text>
+                      <Text style={[styles.habitRate, { color: theme.text }]}>{rate == null ? '—' : `${rate} %`}</Text>
+                    </View>
+                    <View style={[styles.progressTrack, { backgroundColor: habit.color + theme.emptyAlpha }]}>
+                      <View style={[styles.progressFill, { width: `${rate ?? 0}%`, backgroundColor: habit.color }]} />
+                    </View>
+                    <Text style={[styles.habitMeta, { color: theme.muted }]}>{describeHabitRow(row)}</Text>
                   </View>
-                  <Text style={[styles.habitMeta, { color: theme.muted }]}>
-                    {scheduled === 0
-                      ? 'No tocaba en este periodo'
-                      : `${formatCount(done)} de ${scheduled} ${
-                        habit.goal.period === 'week' ? (scheduled === 1 ? 'semana' : 'semanas') : scheduled === 1 ? 'día' : 'días'
-                      }`}
-                  </Text>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </Card>
 
           <Card style={styles.cardGap}>
@@ -226,7 +235,29 @@ function Kpi({ icon, label, value }: { icon: IconName; label: string; value: str
   );
 }
 
-const formatCount = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+/** Con un decimal y coma: 3,5 semanas (las metas semanales a medias cuentan su parte). */
+const formatCount = (n: number) => formatAmount(Math.round(n * 10) / 10);
+
+/**
+ * Línea de cada hábito en el resumen: "4 de 5 días · 2 h 30 min", "6 de 7 días dentro del límite ·
+ * 2 recaídas", "Pendiente hoy"…
+ */
+function describeHabitRow({ habit, scheduled, done, pending, total }: HabitSummary): string {
+  const weekly = habit.goal.period === 'week';
+  if (scheduled === 0) {
+    if (pending > 0) return weekly ? 'Semana en curso' : 'Pendiente hoy';
+    return 'No tocaba en este periodo';
+  }
+  const quit = isQuit(habit);
+  const span = weekly ? (scheduled === 1 ? 'semana' : 'semanas') : scheduled === 1 ? 'día' : 'días';
+  let text = `${formatCount(done)} de ${scheduled} ${span}${quit ? ' dentro del límite' : ''}`;
+  if (total > 0 && habit.unit != null) text += ` · ${formatQuantity(total, habit.unit)}`;
+  else if (total > 0 && quit) {
+    const word = habit.goal.count === 0 ? (total === 1 ? 'recaída' : 'recaídas') : total === 1 ? 'vez' : 'veces';
+    text += ` · ${total} ${word}`;
+  }
+  return text;
+}
 
 function isBest(rates: (number | null)[], i: number): boolean {
   const max = Math.max(...rates.map((r) => r ?? -1));

@@ -24,13 +24,13 @@ describe('occurrences', () => {
 
   it('hoy sin hacer no cuenta como fallo', () => {
     const o = occurrences(makeHabit(), counts(range('2026-09-24', 4)), week.start, week.end, NOW);
-    expect(o).toEqual({ scheduled: 4, done: 4 });
+    expect(o).toEqual({ scheduled: 4, done: 4, pending: 1 }); // hoy queda pendiente
   });
 
   it('hoy hecho sí cuenta, y no cuenta nada antes de crear el hábito', () => {
     const habit = makeHabit({ createdAt: new Date(2026, 8, 23, 10).toISOString() });
     const o = occurrences(habit, counts([TODAY]), week.start, week.end, NOW);
-    expect(o).toEqual({ scheduled: 3, done: 1 }); // 23, 24 y 25
+    expect(o).toEqual({ scheduled: 3, done: 1, pending: 0 }); // 23, 24 y 25
   });
 
   it('solo los días que toca', () => {
@@ -47,7 +47,8 @@ describe('occurrences', () => {
     // Semanas del 7 (3/3) y del 14 (1/3). La del 31/8 es de agosto; la del 21 está en curso.
     expect(o.scheduled).toBe(2);
     expect(o.done).toBeCloseTo(4 / 3);
-    expect(occurrences(habit, data, month.start, month.end, NOW, true)).toEqual({ scheduled: 0, done: 0 });
+    expect(o.pending).toBe(1); // la semana en curso
+    expect(occurrences(habit, data, month.start, month.end, NOW, true)).toEqual({ scheduled: 0, done: 0, pending: 0 });
   });
 });
 
@@ -79,6 +80,14 @@ describe('summarize', () => {
     expect(slipped.completions).toBe(0);
     expect(slipped.activeDays).toBe(0);
     expect(slipped.perfectDays).toBe(3);
+  });
+
+  it('cuenta lo pendiente (hoy y la semana en curso) y lo registrado en el periodo', () => {
+    const read = makeHabit({ id: 'read', unit: 'min', goal: { period: 'day', count: 20 } });
+    const gym = makeHabit({ id: 'gym', goal: { period: 'week', count: 3 } });
+    const s = summarize([read, gym], { read: { '2026-09-21': 30, '2026-09-22': 45, '2026-09-14': 99 } }, 'week', 0, NOW);
+    expect(s.pending).toBe(2); // leer hoy y la semana del gimnasio
+    expect(s.habits.find((h) => h.habit.id === 'read')?.total).toBe(75); // el 14 es de otra semana
   });
 
   it('lista los objetivos logrados dentro del periodo, del más reciente al más antiguo', () => {
@@ -161,7 +170,7 @@ describe('summarize · casos límite de calendario', () => {
     const habit = makeHabit({ createdAt: new Date(2026, 8, 24, 9).toISOString() });
     const week = periodRange('week', 0, NOW);
     // Marcó el lunes 21 aunque creó el hábito el 24: desde el 21 hasta el 24 (hoy no cuenta si no está hecho).
-    expect(occurrences(habit, counts(['2026-09-21']), week.start, week.end, NOW)).toEqual({ scheduled: 4, done: 1 });
+    expect(occurrences(habit, counts(['2026-09-21']), week.start, week.end, NOW)).toEqual({ scheduled: 4, done: 1, pending: 1 });
   });
 
   it('varias veces al día: un día a medias no cuenta como cumplido', () => {

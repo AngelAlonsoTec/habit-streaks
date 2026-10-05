@@ -192,6 +192,20 @@ describe('<Heatmap /> ajustado al ancho', () => {
     expect(screen.UNSAFE_getAllByType(Path).every((p) => p.props.stroke == null)).toBe(true);
   });
 
+  it('marca con un contorno el día que se está viendo, no hoy', () => {
+    render(<Heatmap counts={{}} color="#39D353" startKey="2026-09-01" endKey="2026-09-25" markKey="2026-09-10" />);
+    expect(screen.UNSAFE_getAllByType(Rect)).toHaveLength(1);
+    render(<Heatmap counts={{}} color="#39D353" startKey="2026-09-01" endKey="2026-09-25" markKey="2026-08-10" />);
+    expect(screen.UNSAFE_queryAllByType(Rect)).toHaveLength(0); // fuera del rango: sin contorno
+  });
+
+  it('el contorno no tapa un día con el límite superado', () => {
+    const level = (_d: Date, c: number) => (c > 0 ? -1 : 1);
+    render(<Heatmap counts={{ '2026-09-10': 2 }} color="#39D353" level={level} startKey="2026-09-01" endKey="2026-09-25" markKey="2026-09-10" />);
+    expect(screen.UNSAFE_queryAllByType(Rect)).toHaveLength(0);
+    expect(screen.UNSAFE_getAllByType(Path).some((p) => p.props.stroke != null)).toBe(true); // el aro rojo sí
+  });
+
   it('con rango fijo dibuja exactamente esos meses', () => {
     render(<Heatmap counts={{}} color="#39D353" startKey="2026-01-01" endKey="2026-03-31" showMonthLabels />);
     expect(['Ene 26', 'Feb', 'Mar'].map((l) => screen.getByText(l))).toHaveLength(3);

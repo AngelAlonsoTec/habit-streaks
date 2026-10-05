@@ -1,5 +1,5 @@
 import { makeHabit } from '@/testing/fixtures';
-import { addMonths, formatShortDate, fromKey, toKey } from '../dates';
+import { addMonths, formatDayTitle, formatShortDate, fromKey, toKey } from '../dates';
 import { describeDue, describeDueShort, describeObjective, nextObjective, Objective, suggestObjectives } from '../objectives';
 
 const obj = (o: Partial<Objective>): Objective => ({
@@ -12,6 +12,13 @@ describe('fechas de los objetivos', () => {
     expect(toKey(addMonths(fromKey('2028-01-31'), 1))).toBe('2028-02-29'); // bisiesto
     expect(toKey(addMonths(fromKey('2026-10-05'), 3))).toBe('2027-01-05');
     expect(toKey(addMonths(fromKey('2026-08-31'), 1))).toBe('2026-09-30');
+  });
+
+  it('título de un día cercano: Hoy, Ayer o el día de la semana', () => {
+    expect(formatDayTitle('2026-10-05', '2026-10-05')).toBe('Hoy');
+    expect(formatDayTitle('2026-10-04', '2026-10-05')).toBe('Ayer');
+    expect(formatDayTitle('2026-09-30', '2026-10-05')).toBe('Miércoles 30');
+    expect(formatDayTitle('2026-12-31', '2027-01-01')).toBe('Ayer'); // cruzando el año
   });
 
   it('fecha corta, con el año solo si no es el actual', () => {
