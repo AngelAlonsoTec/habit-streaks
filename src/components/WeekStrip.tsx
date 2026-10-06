@@ -38,7 +38,6 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             accessibilityLabel={`Ver ${key}`}
-            // Sin fondo de columna (se veía como un cuadro): el círculo relleno ya marca el día elegido.
             style={({ pressed }) => [styles.day, pressed && styles.pressed]}
           >
             <Text style={[styles.weekday, { color: isSelected ? theme.primary : theme.muted }]}>
@@ -50,18 +49,12 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
               progress={progress ?? 0}
               color={theme.primary}
               trackColor={progress == null ? 'transparent' : theme.surface}
+              // El elegido, relleno; el completo, con un relleno tenue (como un logro).
+              fill={isSelected ? theme.primaryFill : done ? theme.primary + (theme.dark ? '29' : '1A') : undefined}
             >
-              {/* Día completo: además del anillo cerrado, un relleno tenue (como un logro). */}
-              <View
-                style={[
-                  styles.inner,
-                  isSelected ? { backgroundColor: theme.primaryFill } : done && { backgroundColor: theme.primary + (theme.dark ? '29' : '1A') },
-                ]}
-              >
-                <Text style={[styles.number, { color: numberColor }, (isSelected || done) && styles.bold]}>{d.getDate()}</Text>
-              </View>
+              <Text style={[styles.number, { color: numberColor }, (isSelected || done) && styles.bold]}>{d.getDate()}</Text>
             </ProgressRing>
-            <View style={[styles.todayDot, { backgroundColor: key === todayKey ? theme.primary : 'transparent' }]} />
+            <View style={[styles.todayDot, { backgroundColor: theme.primary, opacity: key === todayKey ? 1 : 0 }]} />
           </Pressable>
         );
       })}
@@ -74,7 +67,6 @@ const styles = StyleSheet.create({
   day: { flex: 1, alignItems: 'center', gap: 6, paddingTop: 9, paddingBottom: 7 },
   pressed: { opacity: 0.6 },
   weekday: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
-  inner: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   number: { fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
   bold: { fontWeight: '800' },
   todayDot: { width: 4, height: 4, borderRadius: 2 },

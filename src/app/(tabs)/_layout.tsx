@@ -8,7 +8,8 @@ import { IconName, useTheme } from '@/theme';
 function TabIcon({ name, focused, color }: { name: IconName; focused: boolean; color: ColorValue }) {
   const theme = useTheme();
   return (
-    <View style={[styles.pill, focused && { backgroundColor: theme.primary + theme.emptyAlpha }]}>
+    // collapsable: si Android crea la vista al ganar el fondo, puede salir sin redondeo (un cuadro).
+    <View collapsable={false} style={[styles.pill, focused && { backgroundColor: theme.primary + theme.emptyAlpha }]}>
       <Ionicons name={name} size={22} color={color} />
     </View>
   );

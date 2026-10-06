@@ -137,7 +137,8 @@ export function DatePicker({ value, onChange, minKey, maxKey, presets: customPre
                     accessibilityState={{ selected, disabled: outside }}
                     style={styles.cell}
                   >
-                    <View style={[styles.day, selected && { backgroundColor: color }]}>
+                    {/* collapsable: si Android la crea al ganar el fondo, puede salir sin redondeo (un cuadro). */}
+                    <View collapsable={false} style={[styles.day, selected && { backgroundColor: color }]}>
                       <Text style={[styles.dayText, { color: selected ? '#FFFFFF' : outside ? theme.border : theme.text }]}>
                         {d.getDate()}
                       </Text>
