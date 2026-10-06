@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProgressRing } from '@/components/ProgressRing';
 import { addDays, DateKey, fromKey, toKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
 import { useToday } from '@/lib/useToday';
-import { useTheme } from '@/theme';
+import { cardStyle, inkOn, useTheme } from '@/theme';
 
 type Props = {
   selected: DateKey;
@@ -31,19 +31,21 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             accessibilityLabel={`Ver ${key}`}
-            style={[styles.day, isSelected && { backgroundColor: theme.card, borderColor: theme.border }]}
+            style={[styles.day, isSelected ? { backgroundColor: theme.primary } : cardStyle(theme)]}
           >
-            <Text style={[styles.weekday, { color: isSelected ? theme.text : theme.muted }]}>
+            <Text style={[styles.weekday, { color: isSelected ? inkOn(theme.primary) : theme.muted }]}>
               {WEEKDAY_LABELS[weekdayIndex(d)]}
             </Text>
             <ProgressRing
-              size={34}
+              size={32}
               strokeWidth={3}
               progress={progress ?? 0}
-              color={theme.primary}
-              trackColor={progress == null ? 'transparent' : theme.surface}
+              color={isSelected ? inkOn(theme.primary) : theme.primary}
+              trackColor={progress == null ? 'transparent' : isSelected ? '#FFFFFF40' : theme.surface}
             >
-              <Text style={[styles.number, { color: theme.text }, isSelected && styles.bold]}>{d.getDate()}</Text>
+              <Text style={[styles.number, { color: isSelected ? inkOn(theme.primary) : theme.text }, isSelected && styles.bold]}>
+                {d.getDate()}
+              </Text>
             </ProgressRing>
           </Pressable>
         );
@@ -53,11 +55,8 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  day: {
-    alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', flex: 1,
-  },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
+  day: { alignItems: 'center', gap: 5, paddingVertical: 9, borderRadius: 16, flex: 1 },
   weekday: { fontSize: 11, fontWeight: '700' },
   number: { fontSize: 13, fontWeight: '600' },
   bold: { fontWeight: '800' },

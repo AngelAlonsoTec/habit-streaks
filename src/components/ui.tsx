@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
-import { IconName, useTheme } from '@/theme';
+import { cardStyle, IconName, inkOn, useTheme } from '@/theme';
 
 export function SectionTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
   const theme = useTheme();
@@ -27,7 +27,7 @@ type ChipProps = {
 export function Chip({ label, icon, selected, color, onPress, onLongPress, accessibilityLabel }: ChipProps) {
   const theme = useTheme();
   const accent = color ?? theme.primary;
-  const fg = selected ? '#FFFFFF' : theme.text;
+  const fg = selected ? inkOn(accent) : theme.text;
   return (
     <Pressable
       onPress={onPress}
@@ -66,7 +66,10 @@ export function Segmented<T extends string>({ value, options, onChange, color, s
             onPress={() => onChange(o.value)}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            style={[styles.segment, selected && { backgroundColor: theme.card, boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)' }]}
+            style={[
+              styles.segment,
+              selected && { backgroundColor: theme.dark ? theme.border : theme.card, boxShadow: '0px 1px 3px rgba(16, 24, 40, 0.12)' },
+            ]}
           >
             {o.icon && <Ionicons name={o.icon} size={16} color={selected ? color ?? theme.text : theme.muted} />}
             <Text
@@ -101,7 +104,7 @@ export function HeaderButton({ icon, label, onPress }: { icon: IconName; label: 
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   const theme = useTheme();
   return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }, style]}>{children}</View>
+    <View style={[styles.card, cardStyle(theme), style]}>{children}</View>
   );
 }
 
@@ -113,13 +116,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
   chipText: { fontSize: 14, fontWeight: '600' },
-  segmented: { flexDirection: 'row', borderRadius: 12, padding: 3 },
+  segmented: { flexDirection: 'row', borderRadius: 14, padding: 4 },
   segment: {
     flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 9, borderRadius: 10,
+    paddingVertical: 9, borderRadius: 11,
   },
   segmentText: { fontSize: 14 },
   bold: { fontWeight: '700' },
   headerButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
+  card: { borderRadius: 20, padding: 16 },
 });

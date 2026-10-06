@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconBadge } from '@/components/finance/ui';
 import { FinanceCategory, formatHours, shiftTrips, Transaction } from '@/lib/finance';
 import { CurrencyCode, formatMoney, formatNumber } from '@/lib/money';
-import { useTheme } from '@/theme';
+import { chartColor, useTheme } from '@/theme';
 
 const UNKNOWN: FinanceCategory = { id: '', name: 'Sin categoría', icon: 'help', color: '#64748B', kind: 'expense' };
 
@@ -45,7 +45,7 @@ export function TransactionRow({ transaction: t, category = UNKNOWN, currency, o
       accessibilityLabel={`${title}, ${amount}`}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
-      <IconBadge icon={category.icon} color={category.color} size={36} />
+      <IconBadge icon={category.icon} color={chartColor(category.color, theme)} size={36} />
       <View style={styles.text}>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
         {(details || t.recurringId) ? (

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BarChart } from '@/components/BarChart';
 import { Heatmap, WeekdayLabels } from '@/components/Heatmap';
+import { GradientCard, ON_GRADIENT } from '@/components/GradientCard';
 import { Card, Segmented } from '@/components/ui';
 import { fromKey, toKey, WEEKDAY_LABELS } from '@/lib/dates';
 import { formatAmount, formatQuantity, isQuit } from '@/lib/habit';
@@ -91,26 +92,26 @@ export default function SummaryScreen() {
         <Text style={[styles.empty, { color: theme.muted }]}>Crea un hábito para ver tu resumen.</Text>
       ) : (
         <>
-          <Card style={styles.hero}>
-            <Text style={[styles.heroLabel, { color: theme.muted }]}>Cumplimiento</Text>
-            <Text style={[styles.heroValue, { color: theme.text }]}>
+          <GradientCard colors={theme.heroHabits} style={styles.hero}>
+            <Text style={[styles.heroLabel, { color: ON_GRADIENT.muted }]}>Cumplimiento</Text>
+            <Text style={[styles.heroValue, { color: ON_GRADIENT.text }]}>
               {summary.rate == null ? '—' : `${summary.rate} %`}
             </Text>
             {delta != null ? (
-              <View style={[styles.delta, { backgroundColor: theme.surface }]}>
+              <View style={[styles.delta, { backgroundColor: ON_GRADIENT.faint }]}>
                 <Ionicons
                   name={delta > 0 ? 'trending-up' : delta < 0 ? 'trending-down' : 'remove'}
                   size={16}
-                  color={delta > 0 ? theme.primary : delta < 0 ? theme.danger : theme.muted}
+                  color={ON_GRADIENT.text}
                 />
-                <Text style={[styles.deltaText, { color: theme.text }]}>
+                <Text style={[styles.deltaText, { color: ON_GRADIENT.text }]}>
                   {delta === 0
                     ? `Igual que ${PREVIOUS_LABEL[period]}`
                     : `${delta > 0 ? '+' : ''}${delta} puntos respecto ${withPreposition('a', period)}`}
                 </Text>
               </View>
             ) : (
-              <Text style={[styles.hint, { color: theme.muted }]}>
+              <Text style={[styles.hint, { color: ON_GRADIENT.muted }]}>
                 {summary.rate != null
                   ? `Sin datos ${withPreposition('de', period)}.`
                   : summary.pending > 0
@@ -119,13 +120,13 @@ export default function SummaryScreen() {
               </Text>
             )}
             {summary.rate != null && summary.pending > 0 && (
-              <Text style={[styles.hint, { color: theme.muted }]}>
+              <Text style={[styles.hint, { color: ON_GRADIENT.muted }]}>
                 {summary.pending === 1
                   ? 'Te queda 1 pendiente, que aún no cuenta.'
                   : `Te quedan ${summary.pending} pendientes, que aún no cuentan.`}
               </Text>
             )}
-          </Card>
+          </GradientCard>
 
           <View style={styles.kpis}>
             <Kpi icon="checkmark-done" label="Veces completado" value={String(summary.completions)} />
@@ -303,7 +304,7 @@ const styles = StyleSheet.create({
   empty: { fontSize: 15, textAlign: 'center', marginTop: 40 },
   hero: { alignItems: 'center', gap: 6 },
   heroLabel: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  heroValue: { fontSize: 44, fontWeight: '800' },
+  heroValue: { fontSize: 48, fontWeight: '800', letterSpacing: -1 },
   delta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   deltaText: { fontSize: 13, fontWeight: '600' },
   kpis: { flexDirection: 'row', gap: 10 },

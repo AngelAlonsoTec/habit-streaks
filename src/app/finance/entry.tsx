@@ -16,7 +16,7 @@ import { formatMoney, formatNumber, moneyInputText, parseMoney } from '@/lib/mon
 import { confirmAction, goBack } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { chartColor, useTheme } from '@/theme';
 
 type Mode = 'shift' | 'fuel';
 
@@ -112,7 +112,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   ].filter((f): f is string => f != null);
   const missingAmounts = isShift ? earnings.filter((e) => e.amount == null).map((e) => e.platform) : [];
 
-  const color = category?.color ?? (kind === 'income' ? theme.primary : theme.danger);
+  const color = category ? chartColor(category.color, theme) : kind === 'income' ? theme.primary : theme.danger;
   const valid = amount != null && category != null && badFields.length === 0 && (!isShift || rows.length > 0);
 
   const title = existing
@@ -256,7 +256,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
             <SectionTitle>Categoría</SectionTitle>
             <View style={styles.wrap}>
               {kindCategories.map((c) => (
-                <Chip key={c.id} label={c.name} icon={c.icon} color={c.color} selected={categoryId === c.id} onPress={() => selectCategory(c.id)} />
+                <Chip key={c.id} label={c.name} icon={c.icon} color={chartColor(c.color, theme)} selected={categoryId === c.id} onPress={() => selectCategory(c.id)} />
               ))}
               {newCategory == null && <Chip label="Nueva" icon="add" onPress={() => setNewCategory('')} />}
             </View>

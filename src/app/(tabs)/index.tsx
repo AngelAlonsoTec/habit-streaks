@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HabitActionsSheet } from '@/components/HabitActionsSheet';
+import { GradientCard, ON_GRADIENT } from '@/components/GradientCard';
 import { HabitCard } from '@/components/HabitCard';
 import { ProgressRing } from '@/components/ProgressRing';
 import { RecordSheet } from '@/components/RecordSheet';
@@ -134,40 +135,40 @@ export default function TodayScreen() {
           </View>
         ) : (
           <>
-            <WeekStrip selected={selectedDay} onSelect={setSelectedDay} progressFor={progressFor} />
-
-            <View style={[styles.summary, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <ProgressRing size={62} strokeWidth={7} progress={progress} color={theme.primary} trackColor={theme.surface}>
+            <GradientCard colors={theme.heroHabits} style={styles.summary}>
+              <ProgressRing size={76} strokeWidth={8} progress={progress} color="#FFFFFF" trackColor={ON_GRADIENT.faint}>
                 {dayOff ? (
-                  <Ionicons name="cafe-outline" size={24} color={theme.muted} />
+                  <Ionicons name="cafe-outline" size={28} color={ON_GRADIENT.text} />
                 ) : dayDone ? (
-                  <Ionicons name="trophy" size={26} color={theme.primary} accessibilityLabel="Día completado" />
+                  <Ionicons name="trophy" size={30} color={ON_GRADIENT.text} accessibilityLabel="Día completado" />
                 ) : (
-                  <Text style={[styles.percent, { color: theme.text }]}>{Math.round(progress * 100)}%</Text>
+                  <Text style={[styles.percent, { color: ON_GRADIENT.text }]}>{Math.round(progress * 100)}%</Text>
                 )}
               </ProgressRing>
               <View style={styles.summaryText}>
-                <Text style={[styles.date, { color: theme.muted }]}>{fullDate(selectedDay)}</Text>
-                <Text style={[styles.progressText, { color: theme.text }]}>
+                <Text style={[styles.date, { color: ON_GRADIENT.muted }]}>{fullDate(selectedDay)}</Text>
+                <Text style={[styles.progressText, { color: ON_GRADIENT.text }]}>
                   {dayOff
                     ? quitting.length ? 'Nada por hacer' : 'Día libre'
                     : dayDone ? 'Día completado' : `${doneCount} de ${scheduledCount} completados`}
                 </Text>
-                <Text style={[styles.message, { color: theme.muted }]}>{message}</Text>
+                <Text style={[styles.message, { color: ON_GRADIENT.muted }]}>{message}</Text>
                 {quitting.length > 0 && (
-                  <View style={styles.quitLine}>
+                  <View style={[styles.quitLine, { backgroundColor: ON_GRADIENT.faint }]}>
                     <Ionicons
                       name={cleanCount === quitting.length ? 'shield-checkmark' : 'alert-circle'}
                       size={13}
-                      color={cleanCount === quitting.length ? theme.primary : theme.danger}
+                      color={ON_GRADIENT.text}
                     />
-                    <Text style={[styles.message, { color: theme.muted }]}>
+                    <Text style={[styles.quitText, { color: ON_GRADIENT.text }]}>
                       {cleanCount} de {quitting.length} dentro del límite
                     </Text>
                   </View>
                 )}
               </View>
-            </View>
+            </GradientCard>
+
+            <WeekStrip selected={selectedDay} onSelect={setSelectedDay} progressFor={progressFor} />
 
             {!isToday && (
               <Pressable
@@ -265,7 +266,7 @@ export default function TodayScreen() {
           accessibilityLabel="Nuevo hábito"
           style={({ pressed }) => [
             styles.fab,
-            { backgroundColor: theme.primary, bottom: 20, transform: [{ scale: pressed ? 0.94 : 1 }] },
+            { backgroundColor: theme.primary, bottom: 20, transform: [{ scale: pressed ? 0.94 : 1 }], boxShadow: `0px 8px 20px ${theme.primary}55` },
           ]}
         >
           <Ionicons name="add" size={30} color="#FFFFFF" />
@@ -279,20 +280,21 @@ export default function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 12 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 4 },
-  title: { fontSize: 30, fontWeight: '800', flexShrink: 1 },
+  content: { padding: 16, gap: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 4 },
+  title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5, flexShrink: 1 },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  summary: {
-    flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16,
-    borderRadius: 18, borderWidth: StyleSheet.hairlineWidth,
-  },
-  summaryText: { flex: 1, gap: 2 },
-  percent: { fontSize: 15, fontWeight: '800' },
-  date: { fontSize: 13 },
-  progressText: { fontSize: 18, fontWeight: '800' },
+  summary: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  summaryText: { flex: 1, gap: 3 },
+  percent: { fontSize: 18, fontWeight: '800' },
+  date: { fontSize: 13, fontWeight: '600' },
+  progressText: { fontSize: 21, fontWeight: '800', letterSpacing: -0.3 },
   message: { fontSize: 13 },
-  quitLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  quitLine: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+  },
+  quitText: { fontSize: 12.5, fontWeight: '700' },
   tip: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
   tipHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tipTitle: { fontSize: 15, fontWeight: '800' },
@@ -317,6 +319,6 @@ const styles = StyleSheet.create({
   emptyButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   fab: {
     position: 'absolute', right: 20, width: 60, height: 60, borderRadius: 30,
-    alignItems: 'center', justifyContent: 'center', boxShadow: '0px 6px 16px rgba(0, 0, 0, 0.25)',
+    alignItems: 'center', justifyContent: 'center',
   },
 });

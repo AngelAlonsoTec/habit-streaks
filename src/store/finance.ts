@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { DateKey, todayKey } from '@/lib/dates';
 import {
-  CUSTOM_CATEGORY_COLOR, DEFAULT_PLATFORMS, dueDates, FinanceCategory, FUEL_CATEGORY, GoalInput, isCustomCategory,
+  catalogCategory, CUSTOM_CATEGORY_COLOR, DEFAULT_PLATFORMS, dueDates, FinanceCategory, FUEL_CATEGORY, GoalInput, isCustomCategory,
   MAX_CATEGORY_LENGTH, MAX_GOAL_NAME_LENGTH, MAX_HOURS, MAX_LITERS, MAX_NOTE_LENGTH, MAX_ODOMETER, MAX_PLATFORM_LENGTH,
   MAX_TRIPS, mergeCategories, OTHER_CATEGORY, PlatformEarning, Profile, Recurring, RecurringInput, savedAmount, SavingsGoal, SHIFT_CATEGORY,
   Transaction, TransactionInput, TxKind,
@@ -301,13 +301,27 @@ export const useFinance = create<FinanceState>()(
     }),
     {
       name: 'finance-store',
-      version: 1,
+      version: 2,
       // En trozos: años de movimientos superan lo que Android lee de una sola entrada.
       storage: createJSONStorage(() => chunkedStorage()),
       partialize: ({ profiles, currency, categories, platforms, transactions, recurring, budgets, goals }) => ({
         profiles, currency, categories, platforms, transactions, recurring, budgets, goals,
       }),
+      migrate: (persisted, version) => migrateFinance(persisted as Partial<FinanceData>, version),
       onRehydrateStorage: () => () => useFinance.setState({ hasHydrated: true }),
     },
   ),
 );
+
+/** Convierte datos guardados por versiones anteriores al formato actual. */
+export function migrateFinance(persisted: Partial<FinanceData>, version: number): FinanceData {
+  const state = { ...persisted };
+  if (version < 2) {
+    // v2: las categorías del catálogo toman los colores de la paleta de las gráficas.
+    state.categories = (state.categories ?? []).map((c) => {
+      const catalog = catalogCategory(c.id);
+      return catalog ? { ...c, color: catalog.color, icon: catalog.icon } : c;
+    });
+  }
+  return state as FinanceData;
+}

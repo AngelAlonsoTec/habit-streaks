@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CurrencyCode, currencyInfo } from '@/lib/money';
-import { IconName, useTheme } from '@/theme';
+import { IconName, inkOn, useTheme } from '@/theme';
 
 /** Panel inferior. El contenido se monta solo mientras está abierto (cada apertura empieza de cero). */
 export function SheetModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
@@ -112,8 +112,8 @@ export function PrimaryButton({ label, color, onPress, disabled, icon }: {
       accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [styles.primary, { backgroundColor: color, opacity: disabled ? 0.4 : pressed ? 0.8 : 1 }]}
     >
-      {icon && <Ionicons name={icon} size={19} color="#FFFFFF" />}
-      <Text style={styles.primaryText}>{label}</Text>
+      {icon && <Ionicons name={icon} size={19} color={inkOn(color)} />}
+      <Text style={[styles.primaryText, { color: inkOn(color) }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -154,7 +154,7 @@ export function ProgressBar({ progress, color, track, style }: { progress: numbe
 export function IconBadge({ icon, color, size = 38 }: { icon: IconName; color: string; size?: number }) {
   return (
     <View style={[styles.badge, { width: size, height: size, borderRadius: size * 0.32, backgroundColor: color }]}>
-      <Ionicons name={icon} size={size * 0.5} color="#FFFFFF" />
+      <Ionicons name={icon} size={size * 0.5} color={inkOn(color)} />
     </View>
   );
 }
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   number: { flex: 1, minWidth: 0, fontSize: 16, fontWeight: '700', paddingVertical: 11, ...inputReset },
   unit: { fontSize: 14, fontWeight: '600' },
   primary: { flexDirection: 'row', gap: 8, borderRadius: 16, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  primaryText: { fontSize: 17, fontWeight: '800' },
   textButton: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
     paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999,

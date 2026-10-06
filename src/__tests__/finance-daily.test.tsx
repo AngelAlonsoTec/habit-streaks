@@ -319,7 +319,7 @@ describe('estudiante: mesada, beca bimestral y una meta para el celular', () => 
     // Lunes 21 de diciembre: lleva 3000 de 4500; faltan 1500 y quedan 6 semanas, con la de hoy ya pagada → 300 por semana.
     openApp('2026-12-21', 9);
     fireEvent.press(await screen.findByText('Planes'));
-    expect(await screen.findByText('$3,000 de $4,500 · 66 %')).toBeTruthy();
+    expect(await screen.findByLabelText('$3,000 de $4,500 · 66 %')).toBeTruthy();
     expect(screen.getByText('Aparta $300 a la semana hasta el 31 ene 2027')).toBeTruthy();
     expect(screen.getByText('El 20, cada 2 meses · próximo 20 feb 2027')).toBeTruthy();
   });
@@ -364,10 +364,15 @@ describe('con el teléfono de por medio', () => {
         });
       }
     }
-    act(() => useFinance.setState({ transactions }));
+    // Sin nada montado en pantalla (no hace falta act).
+    useFinance.setState({ transactions });
 
     // Se guarda en varias entradas, todas lejos del límite de ~2 MB de Android.
-    await waitFor(async () => expect(await AsyncStorage.getItem('finance-store')).toMatch(/^__chunks:\d+$/));
+    // La escritura es asíncrona: se espera a que aparezca la cabecera de los trozos.
+    for (let i = 0; i < 100 && !(await AsyncStorage.getItem('finance-store'))?.startsWith('__chunks:'); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(await AsyncStorage.getItem('finance-store')).toMatch(/^__chunks:\d+$/);
     const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith('finance-store#'));
     const sizes = await Promise.all(keys.map(async (k) => (await AsyncStorage.getItem(k))!.length));
     expect(Math.max(...sizes)).toBeLessThanOrEqual(400_000);

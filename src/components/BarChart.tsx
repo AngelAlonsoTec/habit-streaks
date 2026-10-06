@@ -58,11 +58,12 @@ export function BarChart({ bars, color, labelEvery = 1, height = 140 }: Props) {
 const styles = StyleSheet.create({
   plot: { flexDirection: 'row', alignItems: 'flex-end' },
   gridLine: {
-    position: 'absolute', left: 0, right: 0, borderTopWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', pointerEvents: 'none',
+    position: 'absolute', left: 0, right: 0, borderTopWidth: StyleSheet.hairlineWidth, pointerEvents: 'none',
   },
-  column: { flex: 1, height: '100%' },
-  track: { flex: 1, borderRadius: 4, justifyContent: 'flex-end', overflow: 'hidden' },
-  bar: { width: '100%', borderRadius: 4 },
+  column: { flex: 1, height: '100%', alignItems: 'center' },
+  // Barras finas (≤ 24 px), con el extremo redondeado y la base recta.
+  track: { flex: 1, width: '100%', maxWidth: 24, borderTopLeftRadius: 4, borderTopRightRadius: 4, justifyContent: 'flex-end', overflow: 'hidden' },
+  bar: { width: '100%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   labels: { flexDirection: 'row', marginTop: 6 },
   label: { flex: 1, fontSize: 10, textAlign: 'center' },
   bold: { fontWeight: '800' },

@@ -10,7 +10,7 @@ import { formatMoney, moneyInputText, parseMoney } from '@/lib/money';
 import { successFeedback, tapFeedback } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { inkOn, useTheme } from '@/theme';
 
 type Props = {
   /** Meta a la que se abona; null = cerrado. */
@@ -98,8 +98,8 @@ function Body({ goalId, onClose }: { goalId: string; onClose: () => void }) {
           disabled={amount == null}
           style={[styles.button, styles.primary, { backgroundColor: goal.color, opacity: amount == null ? 0.4 : 1 }]}
         >
-          <Ionicons name="add" size={18} color="#FFFFFF" />
-          <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>Abonar</Text>
+          <Ionicons name="add" size={18} color={inkOn(goal.color)} />
+          <Text style={[styles.buttonText, { color: inkOn(goal.color) }]}>Abonar</Text>
         </Pressable>
       </View>
 

@@ -27,33 +27,33 @@ export const VEHICLE_CATEGORIES = ['gasolina', 'mantenimiento', 'lavado', 'caset
 export const OTHER_CATEGORY: Record<TxKind, string> = { income: 'otros-ingresos', expense: 'otros-gastos' };
 
 const CATALOG: FinanceCategory[] = [
-  { id: 'sueldo', name: 'Sueldo', icon: 'briefcase', color: '#1F883D', kind: 'income' },
-  { id: 'viajes', name: 'Viajes', icon: 'car', color: '#2EC4B6', kind: 'income' },
-  { id: 'mesada', name: 'Mesada', icon: 'wallet', color: '#39D353', kind: 'income' },
-  { id: 'beca', name: 'Beca', icon: 'school', color: '#3B82F6', kind: 'income' },
-  { id: 'trabajos', name: 'Trabajos extra', icon: 'hammer', color: '#84CC16', kind: 'income' },
-  { id: 'bonos', name: 'Bonos y extras', icon: 'gift', color: '#A855F7', kind: 'income' },
-  { id: 'ventas', name: 'Ventas', icon: 'pricetag', color: '#F59E0B', kind: 'income' },
-  { id: 'otros-ingresos', name: 'Otros ingresos', icon: 'add-circle', color: '#64748B', kind: 'income' },
+  { id: 'sueldo', name: 'Sueldo', icon: 'briefcase', color: '#008300', kind: 'income' },
+  { id: 'viajes', name: 'Viajes', icon: 'car', color: '#1BAF7A', kind: 'income' },
+  { id: 'mesada', name: 'Mesada', icon: 'wallet', color: '#2A78D6', kind: 'income' },
+  { id: 'beca', name: 'Beca', icon: 'school', color: '#4A3AA7', kind: 'income' },
+  { id: 'trabajos', name: 'Trabajos extra', icon: 'hammer', color: '#EB6834', kind: 'income' },
+  { id: 'bonos', name: 'Bonos y extras', icon: 'gift', color: '#E87BA4', kind: 'income' },
+  { id: 'ventas', name: 'Ventas', icon: 'pricetag', color: '#EDA100', kind: 'income' },
+  { id: 'otros-ingresos', name: 'Otros ingresos', icon: 'add-circle', color: '#8A8F98', kind: 'income' },
 
-  { id: 'comida', name: 'Comida', icon: 'restaurant', color: '#F97316', kind: 'expense' },
-  { id: 'super', name: 'Súper', icon: 'cart', color: '#84CC16', kind: 'expense' },
-  { id: 'transporte', name: 'Transporte', icon: 'bus', color: '#3B82F6', kind: 'expense' },
-  { id: 'gasolina', name: 'Gasolina', icon: 'speedometer', color: '#EF4444', kind: 'expense' },
-  { id: 'mantenimiento', name: 'Mantenimiento', icon: 'construct', color: '#64748B', kind: 'expense' },
-  { id: 'lavado', name: 'Lavado', icon: 'water', color: '#2EC4B6', kind: 'expense' },
-  { id: 'casetas', name: 'Casetas y estacionamiento', icon: 'ticket', color: '#EAB308', kind: 'expense' },
-  { id: 'seguro-auto', name: 'Seguro del auto', icon: 'shield-checkmark', color: '#6366F1', kind: 'expense' },
-  { id: 'renta-auto', name: 'Renta del auto', icon: 'key', color: '#A855F7', kind: 'expense' },
-  { id: 'renta', name: 'Renta', icon: 'home', color: '#6366F1', kind: 'expense' },
-  { id: 'servicios', name: 'Servicios', icon: 'flash', color: '#EAB308', kind: 'expense' },
-  { id: 'escuela', name: 'Escuela', icon: 'school', color: '#3B82F6', kind: 'expense' },
-  { id: 'celular', name: 'Celular', icon: 'phone-portrait', color: '#2EC4B6', kind: 'expense' },
-  { id: 'salud', name: 'Salud', icon: 'medkit', color: '#EC4899', kind: 'expense' },
-  { id: 'ocio', name: 'Ocio', icon: 'game-controller', color: '#A855F7', kind: 'expense' },
-  { id: 'ropa', name: 'Ropa', icon: 'shirt', color: '#F59E0B', kind: 'expense' },
-  { id: 'suscripciones', name: 'Suscripciones', icon: 'tv', color: '#EF4444', kind: 'expense' },
-  { id: 'otros-gastos', name: 'Otros gastos', icon: 'ellipsis-horizontal', color: '#64748B', kind: 'expense' },
+  { id: 'comida', name: 'Comida', icon: 'restaurant', color: '#EB6834', kind: 'expense' },
+  { id: 'super', name: 'Súper', icon: 'cart', color: '#008300', kind: 'expense' },
+  { id: 'transporte', name: 'Transporte', icon: 'bus', color: '#2A78D6', kind: 'expense' },
+  { id: 'gasolina', name: 'Gasolina', icon: 'speedometer', color: '#E34948', kind: 'expense' },
+  { id: 'mantenimiento', name: 'Mantenimiento', icon: 'construct', color: '#4A3AA7', kind: 'expense' },
+  { id: 'lavado', name: 'Lavado', icon: 'water', color: '#1BAF7A', kind: 'expense' },
+  { id: 'casetas', name: 'Casetas y estacionamiento', icon: 'ticket', color: '#EDA100', kind: 'expense' },
+  { id: 'seguro-auto', name: 'Seguro del auto', icon: 'shield-checkmark', color: '#E87BA4', kind: 'expense' },
+  { id: 'renta-auto', name: 'Renta del auto', icon: 'key', color: '#2A78D6', kind: 'expense' },
+  { id: 'renta', name: 'Renta', icon: 'home', color: '#4A3AA7', kind: 'expense' },
+  { id: 'servicios', name: 'Servicios', icon: 'flash', color: '#EDA100', kind: 'expense' },
+  { id: 'escuela', name: 'Escuela', icon: 'school', color: '#4A3AA7', kind: 'expense' },
+  { id: 'celular', name: 'Celular', icon: 'phone-portrait', color: '#1BAF7A', kind: 'expense' },
+  { id: 'salud', name: 'Salud', icon: 'medkit', color: '#E87BA4', kind: 'expense' },
+  { id: 'ocio', name: 'Ocio', icon: 'game-controller', color: '#E34948', kind: 'expense' },
+  { id: 'ropa', name: 'Ropa', icon: 'shirt', color: '#EDA100', kind: 'expense' },
+  { id: 'suscripciones', name: 'Suscripciones', icon: 'tv', color: '#2A78D6', kind: 'expense' },
+  { id: 'otros-gastos', name: 'Otros gastos', icon: 'ellipsis-horizontal', color: '#8A8F98', kind: 'expense' },
 ];
 
 const PROFILE_CATEGORIES: Record<Profile, string[]> = {
@@ -71,7 +71,7 @@ const PROFILE_CATEGORIES: Record<Profile, string[]> = {
   ],
 };
 
-export const CUSTOM_CATEGORY_COLOR = '#64748B';
+export const CUSTOM_CATEGORY_COLOR = '#8A8F98';
 export const MAX_CATEGORY_LENGTH = 24;
 
 /** Categorías de los perfiles elegidos, en el orden del catálogo. */
@@ -101,6 +101,11 @@ export function sortByUse(categories: FinanceCategory[], transactions: Transacti
   const uses = new Map<string, number>();
   for (const t of transactions) if (t.date >= since) uses.set(t.categoryId, (uses.get(t.categoryId) ?? 0) + 1);
   return [...categories].sort((a, b) => (uses.get(b.id) ?? 0) - (uses.get(a.id) ?? 0));
+}
+
+/** Color e icono de siempre de una categoría del catálogo (null si es propia). */
+export function catalogCategory(id: string): FinanceCategory | null {
+  return CATALOG.find((c) => c.id === id) ?? null;
 }
 
 export function isCustomCategory(id: string): boolean {
@@ -295,6 +300,69 @@ export function monthSpent(transactions: Transaction[], categoryId: string, date
     if (t.kind === 'expense' && t.categoryId === categoryId && t.date.startsWith(month) && t.id !== excludeId) sum += t.amount;
   }
   return roundMoney(sum);
+}
+
+// ---------- Series para las gráficas ----------
+
+/** Todos los días del periodo, en orden. */
+export function rangeDays(range: Range): DateKey[] {
+  const days: DateKey[] = [];
+  for (let d = fromKey(range.start); toKey(d) <= range.end; d = addDays(d, 1)) days.push(toKey(d));
+  return days;
+}
+
+export type DailyFlow = { date: DateKey; income: number; expense: number };
+
+/** Ingresos y gastos de cada día del periodo (los días sin nada, en cero). */
+export function dailyFlow(transactions: Transaction[], range: Range): DailyFlow[] {
+  const byDay = new Map<DateKey, DailyFlow>(rangeDays(range).map((date) => [date, { date, income: 0, expense: 0 }]));
+  for (const t of transactions) {
+    const day = byDay.get(t.date);
+    if (!day) continue;
+    if (t.kind === 'income') day.income = roundMoney(day.income + t.amount);
+    else day.expense = roundMoney(day.expense + t.amount);
+  }
+  return [...byDay.values()];
+}
+
+/**
+ * Cómo va el balance (ingresos − gastos − ahorro) al cierre de cada día, desde el inicio del
+ * periodo hasta hoy (o hasta su final, si ya pasó). Vacío si el periodo aún no empieza.
+ */
+export function balanceSeries(transactions: Transaction[], goals: SavingsGoal[], range: Range, today: DateKey): number[] {
+  const end = today < range.end ? today : range.end;
+  if (end < range.start) return [];
+  const delta = new Map<DateKey, number>();
+  const add = (date: DateKey, n: number) => delta.set(date, (delta.get(date) ?? 0) + n);
+  for (const t of transactions) if (inRange(t.date, range)) add(t.date, t.kind === 'income' ? t.amount : -t.amount);
+  for (const g of goals) for (const d of g.deposits) if (inRange(d.date, range)) add(d.date, -d.amount);
+  let running = 0;
+  return rangeDays({ start: range.start, end }).map((date) => {
+    running += delta.get(date) ?? 0;
+    return roundMoney(running);
+  });
+}
+
+export type ShiftDay = { date: DateKey; byPlatform: Record<string, number> };
+
+/** Lo que dejó cada app cada día del periodo. */
+export function shiftDays(transactions: Transaction[], range: Range): ShiftDay[] {
+  const byDay = new Map<DateKey, ShiftDay>(rangeDays(range).map((date) => [date, { date, byPlatform: {} }]));
+  for (const t of transactions) {
+    const day = t.kind === 'income' && t.shift ? byDay.get(t.date) : undefined;
+    if (!day) continue;
+    for (const p of t.shift!.platforms) day.byPlatform[p.platform] = roundMoney((day.byPlatform[p.platform] ?? 0) + p.amount);
+  }
+  return [...byDay.values()];
+}
+
+export type Slice = { categoryId: string | null; amount: number };
+
+/** Las `max` categorías con más gasto y el resto junto en "Otros" (categoryId null), para la dona. */
+export function topSlices(totals: CategoryTotal[], max = 4): Slice[] {
+  const top: Slice[] = totals.slice(0, max).map((t) => ({ categoryId: t.categoryId, amount: t.amount }));
+  const rest = roundMoney(totals.slice(max).reduce((s, t) => s + t.amount, 0));
+  return rest > 0 ? [...top, { categoryId: null, amount: rest }] : top;
 }
 
 // ---------- Presupuestos ----------

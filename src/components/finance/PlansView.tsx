@@ -6,6 +6,7 @@ import { DepositSheet } from '@/components/finance/DepositSheet';
 import { GoalSheet } from '@/components/finance/GoalSheet';
 import { RecurringSheet } from '@/components/finance/RecurringSheet';
 import { IconBadge, ProgressBar, TextButton } from '@/components/finance/ui';
+import { ProgressRing } from '@/components/ProgressRing';
 import { Card, SectionTitle } from '@/components/ui';
 import { formatShortDate } from '@/lib/dates';
 import {
@@ -15,7 +16,7 @@ import {
 import { formatMoney, formatMoneyRounded } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { CHART_OTHER, chartColor, inkOn, useTheme } from '@/theme';
 
 /** Metas de ahorro, pagos y cobros fijos, y presupuestos. */
 export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new') => void }) {
@@ -66,11 +67,14 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
               <Pressable key={g.id} onPress={() => setEditingGoal(g)} accessibilityLabel={`Meta ${g.name}`}>
                 <Card style={styles.goal}>
                   <View style={styles.row}>
-                    <IconBadge icon={done ? 'trophy' : g.icon} color={g.color} />
+                    <ProgressRing size={54} strokeWidth={5} progress={saved / g.target} color={g.color} trackColor={theme.surface}>
+                      <Ionicons name={done ? 'trophy' : g.icon} size={22} color={g.color} />
+                    </ProgressRing>
                     <View style={styles.flex}>
                       <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{g.name}</Text>
-                      <Text style={[styles.small, { color: theme.muted }]}>
-                        {formatMoney(saved, currency)} de {formatMoney(g.target, currency)} · {Math.floor((saved / g.target) * 100)} %
+                      <Text style={[styles.goalAmount, { color: theme.text }]} numberOfLines={1}>
+                        {formatMoney(saved, currency)}
+                        <Text style={[styles.small, { color: theme.muted }]}> de {formatMoney(g.target, currency)}</Text>
                       </Text>
                     </View>
                     {!done && (
@@ -81,13 +85,19 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
                         accessibilityLabel={`Abonar a ${g.name}`}
                         style={({ pressed }) => [styles.deposit, { backgroundColor: g.color, opacity: pressed ? 0.8 : 1 }]}
                       >
-                        <Ionicons name="add" size={16} color="#FFFFFF" />
-                        <Text style={styles.depositText}>Abonar</Text>
+                        <Ionicons name="add" size={16} color={inkOn(g.color)} />
+                        <Text style={[styles.depositText, { color: inkOn(g.color) }]}>Abonar</Text>
                       </Pressable>
                     )}
                   </View>
-                  <ProgressBar progress={saved / g.target} color={g.color} track={g.color + theme.emptyAlpha} />
-                  <Text style={[styles.small, { color: pace.overdue ? theme.danger : done ? theme.primary : theme.muted }]}>{paceText}</Text>
+                  <View style={[styles.goalFooter, { backgroundColor: theme.surface }]}>
+                    <Text style={[styles.small, styles.flex, { color: pace.overdue ? theme.danger : done ? theme.primary : theme.muted }]}>
+                      {paceText}
+                    </Text>
+                    <Text style={[styles.goalPct, { color: theme.text }]} accessibilityLabel={`${formatMoney(saved, currency)} de ${formatMoney(g.target, currency)} · ${Math.floor((saved / g.target) * 100)} %`}>
+                      {Math.floor((saved / g.target) * 100)} %
+                    </Text>
+                  </View>
                 </Card>
               </Pressable>
             );
@@ -113,7 +123,7 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
                 accessibilityLabel={`Fijo ${r.name}`}
                 style={({ pressed }) => [styles.row, styles.listRow, pressed && { backgroundColor: theme.surface }]}
               >
-                <IconBadge icon={category?.icon ?? 'repeat'} color={category?.color ?? theme.muted} size={34} />
+                <IconBadge icon={category?.icon ?? 'repeat'} color={chartColor(category?.color ?? CHART_OTHER, theme)} size={34} />
                 <View style={styles.flex}>
                   <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{r.name}</Text>
                   <Text style={[styles.small, { color: theme.muted }]} numberOfLines={1}>
@@ -148,7 +158,7 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
             const category = categories.find((c) => c.id === id);
             const spent = monthSpent(transactions, id, today);
             const level = budgetLevel(spent, budget);
-            const color = level === 'over' ? theme.danger : level === 'near' ? '#D97706' : (category?.color ?? theme.primary);
+            const color = level === 'over' ? theme.danger : level === 'near' ? theme.warning : chartColor(category?.color ?? CHART_OTHER, theme);
             return (
               <Pressable
                 key={id}
@@ -157,13 +167,13 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
                 style={({ pressed }) => [styles.listRow, styles.budget, pressed && { backgroundColor: theme.surface }]}
               >
                 <View style={styles.row}>
-                  <IconBadge icon={category?.icon ?? 'help'} color={category?.color ?? theme.muted} size={30} />
+                  <IconBadge icon={category?.icon ?? 'help'} color={chartColor(category?.color ?? CHART_OTHER, theme)} size={30} />
                   <Text style={[styles.title, styles.flex, { color: theme.text }]} numberOfLines={1}>{category?.name ?? 'Categoría'}</Text>
                   <Text style={[styles.small, { color: theme.muted }]}>
                     {formatMoney(spent, currency)} / {formatMoney(budget, currency)}
                   </Text>
                 </View>
-                <ProgressBar progress={spent / budget} color={color} track={(category?.color ?? theme.primary) + theme.emptyAlpha} />
+                <ProgressBar progress={spent / budget} color={color} track={theme.surface} />
               </Pressable>
             );
           })}
@@ -182,12 +192,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   list: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  goal: { gap: 10 },
+  goal: { gap: 12 },
+  goalAmount: { fontSize: 17, fontWeight: '800', marginTop: 1 },
+  goalFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  goalPct: { fontSize: 13, fontWeight: '800' },
   title: { fontSize: 15, fontWeight: '700' },
   small: { fontSize: 12.5 },
   amount: { fontSize: 14.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
   deposit: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999 },
-  depositText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  depositText: { fontSize: 13, fontWeight: '800' },
   listCard: { paddingHorizontal: 8, paddingVertical: 8, gap: 2 },
   listRow: { paddingVertical: 9, paddingHorizontal: 8, borderRadius: 12 },
   budget: { gap: 8 },

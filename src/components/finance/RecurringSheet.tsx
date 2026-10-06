@@ -12,7 +12,7 @@ import { moneyInputText, parseMoney } from '@/lib/money';
 import { confirmAction } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { chartColor, inkOn, useTheme } from '@/theme';
 
 type Suggestion = { name: string; categoryId: string; frequency: Frequency };
 
@@ -85,7 +85,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
   const amount = parseMoney(amountText, currency);
   const kindCategories = categories.filter((c) => c.kind === kind);
   const category = kindCategories.find((c) => c.id === categoryId);
-  const color = category?.color ?? (kind === 'income' ? theme.primary : theme.danger);
+  const color = category ? chartColor(category.color, theme) : kind === 'income' ? theme.primary : theme.danger;
   const monthName = (offset: number) =>
     new Date(t.getFullYear(), t.getMonth() + offset, 1).toLocaleDateString('es-ES', { month: 'long' });
   const byMonthDay = frequency === 'monthly' || frequency === 'bimonthly';
@@ -176,7 +176,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
         <SectionTitle>Categoría</SectionTitle>
         <View style={styles.wrap}>
           {kindCategories.map((c) => (
-            <Chip key={c.id} label={c.name} icon={c.icon} color={c.color} selected={categoryId === c.id} onPress={() => setCategoryId(c.id)} />
+            <Chip key={c.id} label={c.name} icon={c.icon} color={chartColor(c.color, theme)} selected={categoryId === c.id} onPress={() => setCategoryId(c.id)} />
           ))}
         </View>
 
@@ -193,7 +193,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
                 accessibilityState={{ selected: weekday === i }}
                 style={[styles.day, { backgroundColor: weekday === i ? color : theme.surface }]}
               >
-                <Text style={[styles.dayText, { color: weekday === i ? '#FFFFFF' : theme.text }]}>{label}</Text>
+                <Text style={[styles.dayText, { color: weekday === i ? inkOn(color) : theme.text }]}>{label}</Text>
               </Pressable>
             ))}
           </View>
@@ -213,7 +213,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
                   accessibilityState={{ selected: monthDay === d }}
                   style={[styles.monthDay, { backgroundColor: monthDay === d ? color : theme.surface }]}
                 >
-                  <Text style={[styles.dayText, { color: monthDay === d ? '#FFFFFF' : theme.text }]}>{d}</Text>
+                  <Text style={[styles.dayText, { color: monthDay === d ? inkOn(color) : theme.text }]}>{d}</Text>
                 </Pressable>
               )}
             />

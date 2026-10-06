@@ -9,7 +9,7 @@ import { Card, SectionTitle } from '@/components/ui';
 import { isCustomCategory, MAX_PLATFORM_LENGTH, Profile } from '@/lib/finance';
 import { confirmAction, goBack } from '@/lib/platform';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { chartColor, useTheme } from '@/theme';
 
 export default function FinanceSettingsScreen() {
   const theme = useTheme();
@@ -104,7 +104,7 @@ export default function FinanceSettingsScreen() {
           <Card style={styles.list}>
             {custom.map((c) => (
               <View key={c.id} style={styles.categoryRow}>
-                <IconBadge icon={c.icon} color={c.color} size={30} />
+                <IconBadge icon={c.icon} color={chartColor(c.color, theme)} size={30} />
                 <Text style={[styles.categoryName, { color: theme.text }]}>{c.name}</Text>
                 <Text style={[styles.categoryKind, { color: theme.muted }]}>{c.kind === 'income' ? 'Ingreso' : 'Gasto'}</Text>
                 <Pressable onPress={() => removeCategory(c.id, c.name)} hitSlop={8} accessibilityLabel={`Eliminar ${c.name}`}>

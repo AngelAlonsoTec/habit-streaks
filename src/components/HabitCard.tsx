@@ -14,7 +14,7 @@ import { describeDueShort, nextObjective } from '@/lib/objectives';
 import { computeStats, streakLabel } from '@/lib/stats';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
-import { useTheme } from '@/theme';
+import { cardStyle, useTheme } from '@/theme';
 
 type Props = {
   habit: Habit;
@@ -69,7 +69,8 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
       accessibilityHint="Mantén pulsado para editar o eliminar"
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: theme.card, borderColor: theme.border, opacity: dimmed ? 0.6 : pressed ? 0.85 : 1 },
+        cardStyle(theme),
+        { opacity: dimmed ? 0.6 : pressed ? 0.85 : 1 },
       ]}
     >
       <View style={styles.header}>
@@ -161,7 +162,7 @@ export const HabitCard = memo(function HabitCard({ habit, day, showHeatmap, dimm
 });
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 12 },
+  card: { borderRadius: 20, padding: 14, gap: 12 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   titles: { flex: 1, gap: 3 },

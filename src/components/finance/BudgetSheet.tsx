@@ -8,7 +8,7 @@ import { monthSpent } from '@/lib/finance';
 import { formatMoney, formatMoneyRounded, moneyInputText, parseMoney } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
-import { useTheme } from '@/theme';
+import { chartColor, useTheme } from '@/theme';
 
 type Props = {
   /** Categoría a la que se pone presupuesto, 'new' para elegirla, o null = cerrado. */
@@ -60,7 +60,7 @@ function Body({ initial, onClose }: { initial: string | null; onClose: () => voi
     <>
       <SheetHeader
         icon={category?.icon ?? 'pie-chart'}
-        color={category?.color ?? theme.primary}
+        color={category ? chartColor(category.color, theme) : theme.primary}
         title={category ? `Presupuesto: ${category.name}` : 'Nuevo presupuesto'}
         subtitle="Lo máximo que quieres gastar al mes"
         onClose={onClose}
@@ -75,7 +75,7 @@ function Body({ initial, onClose }: { initial: string | null; onClose: () => voi
                   key={c.id}
                   label={c.name}
                   icon={c.icon}
-                  color={c.color}
+                  color={chartColor(c.color, theme)}
                   selected={categoryId === c.id}
                   onPress={() => setCategoryId(c.id)}
                 />
@@ -112,7 +112,7 @@ function Body({ initial, onClose }: { initial: string | null; onClose: () => voi
         )}
       </ScrollView>
 
-      <PrimaryButton label="Guardar presupuesto" color={category?.color ?? theme.primary} onPress={save} disabled={!categoryId || amount == null} />
+      <PrimaryButton label="Guardar presupuesto" color={category ? chartColor(category.color, theme) : theme.primary} onPress={save} disabled={!categoryId || amount == null} />
       {existing != null && (
         <View style={styles.center}>
           <TextButton
