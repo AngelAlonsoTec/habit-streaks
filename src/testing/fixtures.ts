@@ -1,4 +1,5 @@
 import { addDays, DateKey, fromKey, toKey } from '@/lib/dates';
+import type { Transaction } from '@/lib/finance';
 import { ALL_DAYS, Habit } from '@/lib/habit';
 
 /** Viernes 25/09/2026 a las 15:00. */
@@ -32,4 +33,25 @@ export function range(end: DateKey, count: number): DateKey[] {
 
 export function counts(keys: DateKey[], value = 1): Record<DateKey, number> {
   return Object.fromEntries(keys.map((k) => [k, value]));
+}
+
+let txCounter = 0;
+
+/** Movimiento de Finanzas; por defecto, un gasto de comida de $100 el día de `NOW`. */
+export function makeTx(overrides: Partial<Transaction> = {}): Transaction {
+  txCounter += 1;
+  return {
+    id: `t${txCounter}`,
+    kind: 'expense',
+    amount: 100,
+    categoryId: 'comida',
+    date: TODAY,
+    note: '',
+    shift: null,
+    fuel: null,
+    recurringId: null,
+    // Un milisegundo más cada vez: el orden de registro se conserva al ordenar.
+    createdAt: new Date(NOW.getTime() + txCounter).toISOString(),
+    ...overrides,
+  };
 }
