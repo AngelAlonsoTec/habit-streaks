@@ -1,4 +1,4 @@
-import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
+import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import path from 'path';
 
 import { makeHabit } from '@/testing/fixtures';
@@ -514,7 +514,9 @@ describe('flujos de la app', () => {
     fireEvent.press(await screen.findByText('Entendido'));
     await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: true, compactTipSeen: true }));
 
-    useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
+    await act(async () => {
+      useHabits.setState({ settings: { showHeatmaps: true, compactTipSeen: false } });
+    });
     fireEvent.press(await screen.findByLabelText('Vista compacta'));
     await waitFor(() => expect(useHabits.getState().settings).toEqual({ showHeatmaps: false, compactTipSeen: true }));
   });
