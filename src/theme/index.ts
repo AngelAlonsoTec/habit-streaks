@@ -11,6 +11,8 @@ const light = {
   muted: '#6B7280',
   border: '#E3E7ED',
   primary: '#1F883D',
+  /** Relleno con texto blanco encima (en oscuro, el verde principal es demasiado claro para el blanco). */
+  primaryFill: '#1F883D',
   danger: '#CF222E',
   /** Avisos (presupuesto cerca del tope, kilometraje raro). */
   warning: '#B45309',
@@ -32,6 +34,7 @@ const dark: typeof light = {
   muted: '#8B949E',
   border: '#262E38',
   primary: '#3FB950',
+  primaryFill: '#238636',
   danger: '#F85149',
   warning: '#E3A008',
   emptyAlpha: '30',
