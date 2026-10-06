@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { IconBadge } from '@/components/finance/ui';
+import { IconBadge, PaymentBadge } from '@/components/finance/ui';
 import { FinanceCategory, formatHours, shiftTrips, Transaction } from '@/lib/finance';
 import { CurrencyCode, formatMoney, formatNumber } from '@/lib/money';
 import { chartColor, useTheme } from '@/theme';
@@ -45,7 +45,12 @@ export function TransactionRow({ transaction: t, category = UNKNOWN, currency, o
       accessibilityLabel={`${title}, ${amount}`}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
-      <IconBadge icon={category.icon} color={chartColor(category.color, theme)} size={36} />
+      {/* Un gasto de Netflix o Spotify, con la insignia del servicio. */}
+      {income ? (
+        <IconBadge icon={category.icon} color={chartColor(category.color, theme)} size={36} />
+      ) : (
+        <PaymentBadge name={t.note} category={category} size={36} />
+      )}
       <View style={styles.text}>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
         {(details || t.recurringId) ? (

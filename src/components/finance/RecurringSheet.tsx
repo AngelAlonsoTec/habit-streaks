@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FitGrid } from '@/components/FitGrid';
-import { AmountInput, PrimaryButton, SheetHeader, SheetModal, TextButton } from '@/components/finance/ui';
+import { AmountInput, PaymentBadge, PrimaryButton, SheetHeader, SheetModal, TextButton } from '@/components/finance/ui';
 import { Chip, SectionTitle, Segmented } from '@/components/ui';
 import { DateKey, formatShortDate, fromKey, toKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
 import {
-  describeFrequency, Frequency, FREQUENCIES, MAX_NOTE_LENGTH, nextOccurrence, occursOn, Recurring, TxKind,
+  describeFrequency, Frequency, FREQUENCIES, KNOWN_SERVICES, knownService, MAX_NOTE_LENGTH, nextOccurrence, occursOn, Recurring,
+  TxKind, withCatalogCategory,
 } from '@/lib/finance';
 import { moneyInputText, parseMoney } from '@/lib/money';
 import { confirmAction } from '@/lib/platform';
@@ -16,6 +17,12 @@ import { chartColor, inkOn, useTheme } from '@/theme';
 
 type Suggestion = { name: string; categoryId: string; frequency: Frequency };
 
+/** Las suscripciones conocidas, para elegirlas de un toque (se cobran cada mes). */
+const SERVICE_SUGGESTIONS: Suggestion[] = KNOWN_SERVICES.map((s) => ({ name: s.name, categoryId: s.categoryId, frequency: 'monthly' }));
+
+/** Estas categorías sirven a cualquiera: si faltan, se añaden al guardar. Las demás (auto, escuela), solo si las tiene. */
+const COMMON_CATEGORIES = ['renta', 'servicios', 'celular', 'suscripciones', 'salud'];
+
 const SUGGESTIONS: Record<TxKind, Suggestion[]> = {
   expense: [
     { name: 'Renta', categoryId: 'renta', frequency: 'monthly' },
@@ -23,8 +30,7 @@ const SUGGESTIONS: Record<TxKind, Suggestion[]> = {
     { name: 'Agua', categoryId: 'servicios', frequency: 'bimonthly' },
     { name: 'Internet', categoryId: 'servicios', frequency: 'monthly' },
     { name: 'Plan del celular', categoryId: 'celular', frequency: 'monthly' },
-    { name: 'Netflix', categoryId: 'suscripciones', frequency: 'monthly' },
-    { name: 'Spotify', categoryId: 'suscripciones', frequency: 'monthly' },
+    { name: 'Gimnasio', categoryId: 'salud', frequency: 'monthly' },
     { name: 'Renta del auto', categoryId: 'renta-auto', frequency: 'weekly' },
     { name: 'Seguro del auto', categoryId: 'seguro-auto', frequency: 'monthly' },
     { name: 'Colegiatura', categoryId: 'escuela', frequency: 'monthly' },
@@ -40,22 +46,31 @@ const SUGGESTIONS: Record<TxKind, Suggestion[]> = {
 const WEEKDAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
+/** Un fijo a editar, o el tipo de uno nuevo ('expense' = gasto fijo, 'income' = ingreso fijo). */
+export type RecurringTarget = Recurring | TxKind;
+
 type Props = {
-  /** Fijo a editar, 'new' para crear uno, o null = cerrado. */
-  recurring: Recurring | 'new' | null;
+  /** null = cerrado. */
+  target: RecurringTarget | null;
   onClose: () => void;
 };
 
 /** Pagos o cobros que se repiten: se registran solos el día que tocan. */
-export function RecurringSheet({ recurring, onClose }: Props) {
+export function RecurringSheet({ target, onClose }: Props) {
   return (
-    <SheetModal open={recurring != null} onClose={onClose}>
-      {recurring != null && <Body recurring={recurring === 'new' ? null : recurring} onClose={onClose} />}
+    <SheetModal open={target != null} onClose={onClose}>
+      {target != null && (
+        <Body
+          recurring={typeof target === 'string' ? null : target}
+          initialKind={typeof target === 'string' ? target : target.kind}
+          onClose={onClose}
+        />
+      )}
     </SheetModal>
   );
 }
 
-function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: () => void }) {
+function Body({ recurring, initialKind, onClose }: { recurring: Recurring | null; initialKind: TxKind; onClose: () => void }) {
   const theme = useTheme();
   const today = useToday();
   const currency = useFinance((s) => s.currency);
@@ -66,7 +81,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
   const applyRecurring = useFinance((s) => s.applyRecurring);
 
   const t = fromKey(today);
-  const [kind, setKind] = useState<TxKind>(recurring?.kind ?? 'expense');
+  const [kind, setKind] = useState<TxKind>(initialKind);
   const [name, setName] = useState(recurring?.name ?? '');
   const [amountText, setAmountText] = useState(recurring ? moneyInputText(recurring.amount, currency) : '');
   const [categoryId, setCategoryId] = useState<string | null>(recurring?.categoryId ?? null);
@@ -83,7 +98,8 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
   });
 
   const amount = parseMoney(amountText, currency);
-  const kindCategories = categories.filter((c) => c.kind === kind);
+  // Si eligió Netflix y no tenía "Suscripciones", la categoría sale ya (y se añade al guardar).
+  const kindCategories = withCatalogCategory(categories, categoryId ?? '').filter((c) => c.kind === kind);
   const category = kindCategories.find((c) => c.id === categoryId);
   const color = category ? chartColor(category.color, theme) : kind === 'income' ? theme.primary : theme.danger;
   const monthName = (offset: number) =>
@@ -95,9 +111,11 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
     ? toKey(new Date(t.getFullYear(), t.getMonth() + 1, 1))
     : recurring && frequency === 'bimonthly' ? `${today.slice(0, 7)}-01` : today;
   const valid = name.trim().length > 0 && amount != null && category != null;
-  const suggestions = !recurring && !name.trim()
-    ? SUGGESTIONS[kind].filter((s) => kindCategories.some((c) => c.id === s.categoryId))
+  const suggesting = !recurring && !name.trim();
+  const suggestions = suggesting
+    ? SUGGESTIONS[kind].filter((s) => COMMON_CATEGORIES.includes(s.categoryId) || kindCategories.some((c) => c.id === s.categoryId))
     : [];
+  const services = suggesting && kind === 'expense' ? SERVICE_SUGGESTIONS : [];
 
   // Un fijo nuevo empieza hoy: si hoy toca, se registra en cuanto se guarda.
   const preview = recurring
@@ -115,6 +133,13 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
     setName(s.name);
     setCategoryId(s.categoryId);
     setFrequency(s.frequency);
+  };
+
+  // Al escribir "netflix" a mano, se elige sola su categoría (si aún no eligió otra).
+  const changeName = (text: string) => {
+    setName(text);
+    const service = kind === 'expense' && !categoryId ? knownService(text) : null;
+    if (service) setCategoryId(service.categoryId);
   };
 
   const save = () => {
@@ -139,7 +164,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
       <SheetHeader
         icon="repeat"
         color={color}
-        title={recurring ? 'Editar fijo' : 'Nuevo pago o cobro fijo'}
+        title={`${recurring ? 'Editar' : 'Nuevo'} ${kind === 'expense' ? 'gasto' : 'ingreso'} fijo`}
         subtitle={describeFrequency({ frequency, day })}
         onClose={onClose}
       />
@@ -155,13 +180,39 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
 
         <TextInput
           value={name}
-          onChangeText={setName}
-          placeholder={kind === 'expense' ? 'Ej.: Renta' : 'Ej.: Sueldo'}
+          onChangeText={changeName}
+          placeholder={kind === 'expense' ? 'Ej.: Netflix, renta, internet' : 'Ej.: Sueldo'}
           placeholderTextColor={theme.muted}
           maxLength={MAX_NOTE_LENGTH}
           accessibilityLabel="Nombre del fijo"
           style={[styles.input, { color: theme.text, backgroundColor: theme.surface }]}
         />
+        {services.length > 0 && (
+          <>
+            <Text style={[styles.groupLabel, { color: theme.muted }]}>Suscripciones</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.services}
+              contentContainerStyle={styles.servicesContent}
+            >
+              {services.map((s) => (
+                <Pressable
+                  key={s.name}
+                  onPress={() => applySuggestion(s)}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.name}
+                  style={({ pressed }) => [styles.service, pressed && styles.pressed]}
+                >
+                  <PaymentBadge name={s.name} category={undefined} size={46} />
+                  <Text style={[styles.serviceName, { color: theme.text }]} numberOfLines={2}>{s.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Text style={[styles.groupLabel, { color: theme.muted }]}>Casa y otros</Text>
+          </>
+        )}
         {suggestions.length > 0 && (
           <View style={[styles.wrap, styles.spaced]}>
             {suggestions.map((s) => (
@@ -261,6 +312,12 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineWidth: 0 } }),
   },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  groupLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14 },
+  services: { marginTop: 8, flexGrow: 0 },
+  servicesContent: { gap: 4 },
+  service: { width: 70, alignItems: 'center', gap: 6, paddingVertical: 4 },
+  serviceName: { fontSize: 11.5, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
+  pressed: { opacity: 0.6 },
   spaced: { marginTop: 10 },
   days: { flexDirection: 'row', gap: 6 },
   day: { flex: 1, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

@@ -1,7 +1,8 @@
 import {
-  budgetLevel, categoriesFor, formatHours, parseHours, parseQuantity, sortByUse, describeFrequency, describeFrequencyShort, describePeriod, driverStats, dueDates, fuelEfficiency,
-  fuelStats, isCustomCategory, lastOdometer, mergeCategories, monthlyEquivalent, monthSpent, nextOccurrence, occursOn,
-  periodRange, periodTotals, Recurring, SavingsGoal, savingsPace, totalsByCategory,
+  budgetLevel, byNextCharge, categoriesFor, formatHours, parseHours, parseQuantity, sortByUse, describeFrequency, describeFrequencyShort,
+  describePeriod, describeWhen, driverStats, dueDates, fixedSummary, fuelEfficiency, fuelStats, isCustomCategory, knownService, lastOdometer,
+  mergeCategories, monthlyEquivalent, monthSpent, nextOccurrence, occursOn, periodRange, periodTotals, Recurring, SavingsGoal, savingsPace,
+  totalsByCategory, withCatalogCategory, yearlyEquivalent,
 } from '../finance';
 import { fromKey } from '../dates';
 import { makeTx } from '@/testing/fixtures';
@@ -347,5 +348,60 @@ describe('categorías por uso', () => {
     expect(sorted.slice(0, 2)).toEqual(['transporte', 'comida']);
     // El resto, en su orden de siempre.
     expect(sorted.slice(2)).toEqual(cats.map((c) => c.id).filter((id) => id !== 'transporte' && id !== 'comida'));
+  });
+});
+
+describe('gastos fijos y suscripciones', () => {
+  it('reconoce los servicios por su nombre, como sea que se escriba', () => {
+    expect(knownService('Netflix')?.name).toBe('Netflix');
+    expect(knownService('netflix premium')?.name).toBe('Netflix');
+    expect(knownService('Disney Plus')?.name).toBe('Disney+');
+    expect(knownService('HBO')?.name).toBe('HBO Max');
+    expect(knownService('Max')?.name).toBe('HBO Max');
+    expect(knownService('PS Plus')?.name).toBe('PlayStation Plus');
+    expect(knownService('Spotify Familiar')?.name).toBe('Spotify');
+    // Lo que solo se le parece, no.
+    for (const name of ['Maxi despensa', 'Primer pago', 'Renta', 'Uber', 'Melissa', '  ']) expect(knownService(name)).toBeNull();
+  });
+
+  it('cuánto se llevan este mes: lo ya cobrado, lo que falta y lo que empieza después', () => {
+    const list = [
+      recurring({ id: 'a', name: 'Renta', amount: 5000, day: 1 }),
+      recurring({ id: 'b', name: 'Netflix', amount: 219, categoryId: 'suscripciones', day: 20 }),
+      // Creado el 5 para el día 2: este mes ya no toca, empieza en noviembre.
+      recurring({ id: 'c', name: 'Spotify', amount: 129, categoryId: 'suscripciones', day: 2, startDate: '2026-10-05' }),
+      recurring({ id: 'd', kind: 'income', name: 'Sueldo', amount: 9000, categoryId: 'sueldo', frequency: 'biweekly', day: 0 }),
+      // Los lunes: 5, 12, 19 y 26 de octubre.
+      recurring({ id: 'e', name: 'Renta del auto', amount: 2500, categoryId: 'renta-auto', frequency: 'weekly', day: 0 }),
+    ];
+    expect(fixedSummary(list, '2026-10-06')).toEqual({
+      month: 15219, paid: 7500, pending: 7719, perMonth: 16181.33, perYear: 194176, subscriptions: 348,
+    });
+    expect(fixedSummary([], '2026-10-06')).toEqual({ month: 0, paid: 0, pending: 0, perMonth: 0, perYear: 0, subscriptions: 0 });
+  });
+
+  it('en el orden en que se cobran, y cuándo, en corto', () => {
+    const list = [recurring({ id: 'a', name: 'Renta', day: 1 }), recurring({ id: 'b', name: 'Netflix', day: 8 }), recurring({ id: 'c', name: 'Agua', day: 8 })];
+    expect(byNextCharge(list, '2026-10-06').map((x) => [x.recurring.name, x.date])).toEqual([
+      ['Agua', '2026-10-08'], ['Netflix', '2026-10-08'], ['Renta', '2026-11-01'],
+    ]);
+    expect(describeWhen('2026-10-07', '2026-10-06')).toBe('mañana');
+    expect(describeWhen('2026-10-09', '2026-10-06')).toBe('en 3 días');
+    expect(describeWhen('2026-10-20', '2026-10-06')).toBe('el 20 oct');
+    expect(yearlyEquivalent({ frequency: 'biweekly', amount: 6000 })).toBe(144000);
+    expect(yearlyEquivalent({ frequency: 'bimonthly', amount: 450 })).toBe(2700);
+  });
+
+  it('el conductor también tiene renta, servicios y suscripciones', () => {
+    expect(categoriesFor(['driver']).map((c) => c.id)).toEqual(expect.arrayContaining(['renta', 'servicios', 'suscripciones']));
+  });
+
+  it('elegir Netflix sin tener "Suscripciones" la añade en su sitio', () => {
+    const before = categoriesFor(['driver']).filter((c) => c.id !== 'suscripciones');
+    const after = withCatalogCategory(before, 'suscripciones');
+    const ids = after.map((c) => c.id);
+    expect(ids.indexOf('suscripciones')).toBe(ids.indexOf('otros-gastos') - 1);
+    expect(withCatalogCategory(after, 'suscripciones')).toBe(after);
+    expect(withCatalogCategory(before, 'custom-x')).toBe(before);
   });
 });

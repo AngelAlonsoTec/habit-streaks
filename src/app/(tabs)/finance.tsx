@@ -9,6 +9,7 @@ import { BudgetSheet } from '@/components/finance/BudgetSheet';
 import { MovementsView } from '@/components/finance/MovementsView';
 import { FinanceOnboarding } from '@/components/finance/Onboarding';
 import { PlansView } from '@/components/finance/PlansView';
+import { RecurringSheet, RecurringTarget } from '@/components/finance/RecurringSheet';
 import { SummaryView } from '@/components/finance/SummaryView';
 import { GradientCard, ON_GRADIENT } from '@/components/GradientCard';
 import { HeaderButton, Segmented } from '@/components/ui';
@@ -45,6 +46,7 @@ function FinanceHome() {
   const [offset, setOffset] = useState(0);
   const [view, setView] = useState<FinanceView>('summary');
   const [budgetTarget, setBudgetTarget] = useState<string | 'new' | null>(null);
+  const [recurringTarget, setRecurringTarget] = useState<RecurringTarget | null>(null);
 
   // Los fijos se apuntan solos al abrir Finanzas (y al cambiar de día con la app abierta).
   useEffect(() => {
@@ -172,12 +174,21 @@ function FinanceHome() {
           ]}
         />
 
-        {view === 'summary' && <SummaryView range={range} period={period} onBudget={setBudgetTarget} />}
+        {view === 'summary' && (
+          <SummaryView
+            range={range}
+            period={period}
+            onBudget={setBudgetTarget}
+            onRecurring={setRecurringTarget}
+            onSeeFixed={() => setView('plans')}
+          />
+        )}
         {view === 'movements' && <MovementsView range={range} />}
-        {view === 'plans' && <PlansView onBudget={setBudgetTarget} />}
+        {view === 'plans' && <PlansView onBudget={setBudgetTarget} onRecurring={setRecurringTarget} />}
       </ScrollView>
 
       <BudgetSheet target={budgetTarget} onClose={() => setBudgetTarget(null)} />
+      <RecurringSheet target={recurringTarget} onClose={() => setRecurringTarget(null)} />
     </>
   );
 }

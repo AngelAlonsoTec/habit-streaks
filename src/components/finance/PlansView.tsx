@@ -4,22 +4,27 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DepositSheet } from '@/components/finance/DepositSheet';
 import { GoalSheet } from '@/components/finance/GoalSheet';
-import { RecurringSheet } from '@/components/finance/RecurringSheet';
-import { IconBadge, ProgressBar, TextButton } from '@/components/finance/ui';
+import { RecurringTarget } from '@/components/finance/RecurringSheet';
+import { IconBadge, PaymentBadge, ProgressBar, TextButton } from '@/components/finance/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Card, SectionTitle } from '@/components/ui';
 import { formatShortDate } from '@/lib/dates';
 import {
-  budgetLevel, describeFrequencyShort, monthlyEquivalent, monthSpent, nextOccurrence, Recurring, savedAmount, SavingsGoal,
-  savingsPace,
+  budgetLevel, byNextCharge, describeFrequencyShort, describeWhen, FinanceCategory, fixedSummary, monthlyEquivalent, monthSpent,
+  Recurring, savedAmount, SavingsGoal, savingsPace,
 } from '@/lib/finance';
-import { formatMoney, formatMoneyRounded } from '@/lib/money';
+import { CurrencyCode, formatMoney, formatMoneyRounded } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
 import { CHART_OTHER, chartColor, inkOn, useTheme } from '@/theme';
 
-/** Metas de ahorro, pagos y cobros fijos, y presupuestos. */
-export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new') => void }) {
+type Props = {
+  onBudget: (categoryId: string | 'new') => void;
+  onRecurring: (target: RecurringTarget) => void;
+};
+
+/** Gastos e ingresos fijos, metas de ahorro y presupuestos. */
+export function PlansView({ onBudget, onRecurring }: Props) {
   const theme = useTheme();
   const today = useToday();
   const currency = useFinance((s) => s.currency);
@@ -30,17 +35,73 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
   const transactions = useFinance((s) => s.transactions);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | 'new' | null>(null);
   const [depositGoal, setDepositGoal] = useState<string | null>(null);
-  const [editingRecurring, setEditingRecurring] = useState<Recurring | 'new' | null>(null);
 
-  const fixedExpenses = recurring.filter((r) => r.kind === 'expense').reduce((s, r) => s + monthlyEquivalent(r), 0);
-  const fixedIncome = recurring.filter((r) => r.kind === 'income').reduce((s, r) => s + monthlyEquivalent(r), 0);
+  const fixedExpenses = byNextCharge(recurring.filter((r) => r.kind === 'expense'), today);
+  const fixedIncomes = byNextCharge(recurring.filter((r) => r.kind === 'income'), today);
+  const summary = fixedSummary(recurring, today);
+  const incomePerMonth = fixedIncomes.reduce((s, f) => s + monthlyEquivalent(f.recurring), 0);
   const budgetEntries = Object.entries(budgets);
   const budgetTotal = budgetEntries.reduce((s, [, b]) => s + b, 0);
   // Las metas logradas, al final.
   const sortedGoals = [...goals].sort((a, b) => Number(a.achievedOn != null) - Number(b.achievedOn != null));
+  const categoryOf = (id: string) => categories.find((c) => c.id === id);
 
   return (
     <View>
+      <SectionTitle
+        right={<TextButton label="Nuevo" icon="add" accessibilityLabel="Nuevo gasto fijo" onPress={() => onRecurring('expense')} />}
+      >
+        Gastos fijos
+      </SectionTitle>
+      {fixedExpenses.length === 0 ? (
+        <Text style={[styles.empty, { color: theme.muted }]}>
+          Netflix, la renta, el internet o el gimnasio: agrégalos una vez y se apuntan solos el día que se cobran.
+        </Text>
+      ) : (
+        <Card style={styles.listCard}>
+          <View style={[styles.fixedTotals, { backgroundColor: theme.surface }]}>
+            <View style={styles.flex}>
+              <Text style={[styles.small, { color: theme.muted }]}>Al mes</Text>
+              <Text style={[styles.bigAmount, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
+                {formatMoneyRounded(summary.perMonth, currency)}
+              </Text>
+            </View>
+            <View style={styles.alignEnd}>
+              <Text style={[styles.small, { color: theme.muted }]}>Al año</Text>
+              <Text style={[styles.yearAmount, { color: theme.text }]} numberOfLines={1}>{formatMoneyRounded(summary.perYear, currency)}</Text>
+            </View>
+          </View>
+          {summary.subscriptions > 0 && (
+            <Text style={[styles.footnote, { color: theme.muted }]}>
+              En suscripciones: {formatMoneyRounded(summary.subscriptions, currency)} al mes.
+            </Text>
+          )}
+          {fixedExpenses.map(({ recurring: r, date }) => (
+            <FixedRow key={r.id} recurring={r} date={date} category={categoryOf(r.categoryId)} currency={currency} onPress={() => onRecurring(r)} />
+          ))}
+        </Card>
+      )}
+
+      <SectionTitle
+        right={<TextButton label="Nuevo" icon="add" accessibilityLabel="Nuevo ingreso fijo" onPress={() => onRecurring('income')} />}
+      >
+        Ingresos fijos
+      </SectionTitle>
+      {fixedIncomes.length === 0 ? (
+        <Text style={[styles.empty, { color: theme.muted }]}>
+          Tu sueldo, la mesada o la beca: se apuntan solos el día que llegan.
+        </Text>
+      ) : (
+        <Card style={styles.listCard}>
+          {fixedIncomes.map(({ recurring: r, date }) => (
+            <FixedRow key={r.id} recurring={r} date={date} category={categoryOf(r.categoryId)} currency={currency} onPress={() => onRecurring(r)} />
+          ))}
+          <Text style={[styles.footnote, { color: theme.muted }]}>
+            Unos {formatMoneyRounded(incomePerMonth, currency)} al mes.
+          </Text>
+        </Card>
+      )}
+
       <SectionTitle right={<TextButton label="Nueva meta" icon="add" onPress={() => setEditingGoal('new')} />}>
         Metas de ahorro
       </SectionTitle>
@@ -105,46 +166,6 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
         </View>
       )}
 
-      <SectionTitle right={<TextButton label="Nuevo fijo" icon="add" onPress={() => setEditingRecurring('new')} />}>
-        Pagos y cobros fijos
-      </SectionTitle>
-      {recurring.length === 0 ? (
-        <Text style={[styles.empty, { color: theme.muted }]}>
-          Renta, internet, suscripciones, tu sueldo o tu mesada: se apuntan solos el día que tocan.
-        </Text>
-      ) : (
-        <Card style={styles.listCard}>
-          {recurring.map((r) => {
-            const category = categories.find((c) => c.id === r.categoryId);
-            return (
-              <Pressable
-                key={r.id}
-                onPress={() => setEditingRecurring(r)}
-                accessibilityLabel={`Fijo ${r.name}`}
-                style={({ pressed }) => [styles.row, styles.listRow, pressed && { backgroundColor: theme.surface }]}
-              >
-                <IconBadge icon={category?.icon ?? 'repeat'} color={chartColor(category?.color ?? CHART_OTHER, theme)} size={34} />
-                <View style={styles.flex}>
-                  <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{r.name}</Text>
-                  <Text style={[styles.small, { color: theme.muted }]} numberOfLines={1}>
-                    {describeFrequencyShort(r)} · próximo {formatShortDate(nextOccurrence(r, today), today)}
-                  </Text>
-                </View>
-                <Text style={[styles.amount, { color: r.kind === 'income' ? theme.primary : theme.text }]}>
-                  {formatMoney(r.kind === 'income' ? r.amount : -r.amount, currency, { sign: true })}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Text style={[styles.footnote, { color: theme.muted }]}>
-            {[
-              fixedExpenses > 0 ? `Pagos: unos ${formatMoneyRounded(fixedExpenses, currency)} al mes` : null,
-              fixedIncome > 0 ? `cobros: unos ${formatMoneyRounded(fixedIncome, currency)} al mes` : null,
-            ].filter(Boolean).join(' · ').replace(/^c/, 'C')}
-          </Text>
-        </Card>
-      )}
-
       <SectionTitle right={<TextButton label="Nuevo" icon="add" accessibilityLabel="Nuevo presupuesto" onPress={() => onBudget('new')} />}>
         Presupuestos del mes
       </SectionTitle>
@@ -155,7 +176,7 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
       ) : (
         <Card style={styles.listCard}>
           {budgetEntries.map(([id, budget]) => {
-            const category = categories.find((c) => c.id === id);
+            const category = categoryOf(id);
             const spent = monthSpent(transactions, id, today);
             const level = budgetLevel(spent, budget);
             const color = level === 'over' ? theme.danger : level === 'near' ? theme.warning : chartColor(category?.color ?? CHART_OTHER, theme);
@@ -183,13 +204,46 @@ export function PlansView({ onBudget }: { onBudget: (categoryId: string | 'new')
 
       <GoalSheet goal={editingGoal} onClose={() => setEditingGoal(null)} />
       <DepositSheet goalId={depositGoal} onClose={() => setDepositGoal(null)} />
-      <RecurringSheet recurring={editingRecurring} onClose={() => setEditingRecurring(null)} />
     </View>
+  );
+}
+
+/** Un fijo en la lista: su insignia, cada cuándo y cuándo toca el próximo. */
+export function FixedRow({ recurring: r, date, category, currency, onPress }: {
+  recurring: Recurring;
+  /** Próxima fecha en que se registra. */
+  date: string;
+  category: FinanceCategory | undefined;
+  currency: CurrencyCode;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const today = useToday();
+  const income = r.kind === 'income';
+  const amount = formatMoney(income ? r.amount : -r.amount, currency, { sign: true });
+  const when = describeWhen(date, today);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Fijo ${r.name}, ${amount}, ${when}`}
+      style={({ pressed }) => [styles.row, styles.listRow, pressed && { backgroundColor: theme.surface }]}
+    >
+      <PaymentBadge name={r.name} category={category} size={36} />
+      <View style={styles.flex}>
+        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{r.name}</Text>
+        <Text style={[styles.small, { color: theme.muted }]} numberOfLines={1}>
+          {describeFrequencyShort(r)} · {income ? 'llega' : 'se cobra'} {when}
+        </Text>
+      </View>
+      <Text style={[styles.amount, { color: income ? theme.primary : theme.text }]}>{amount}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  alignEnd: { alignItems: 'flex-end' },
   list: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   goal: { gap: 12 },
@@ -203,6 +257,9 @@ const styles = StyleSheet.create({
   depositText: { fontSize: 13, fontWeight: '800' },
   listCard: { paddingHorizontal: 8, paddingVertical: 8, gap: 2 },
   listRow: { paddingVertical: 9, paddingHorizontal: 8, borderRadius: 12 },
+  fixedTotals: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
+  bigAmount: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  yearAmount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   budget: { gap: 8 },
   footnote: { fontSize: 12, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 2 },
   empty: { fontSize: 13.5, lineHeight: 19 },

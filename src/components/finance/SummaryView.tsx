@@ -5,14 +5,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DayBars } from '@/components/charts/DayBars';
 import { DonutChart } from '@/components/charts/DonutChart';
 import { StackedBars } from '@/components/charts/StackedBars';
-import { IconBadge, ProgressBar } from '@/components/finance/ui';
+import { RecurringTarget } from '@/components/finance/RecurringSheet';
+import { IconBadge, PaymentBadge, ProgressBar, TextButton } from '@/components/finance/ui';
 import { Card } from '@/components/ui';
 import { DateKey, formatDayTitle, fromKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
 import {
-  budgetLevel, BudgetLevel, dailyFlow, driverStats, FinanceCategory, FinancePeriod, formatHours, fuelEfficiency, fuelStats,
-  FUEL_CATEGORY, Range, shiftDays, topSlices, totalsByCategory,
+  budgetLevel, BudgetLevel, byNextCharge, dailyFlow, describeWhen, driverStats, FinanceCategory, FinancePeriod, fixedSummary,
+  formatHours, fuelEfficiency, fuelStats, FUEL_CATEGORY, inRange, Range, shiftDays, topSlices, totalsByCategory,
 } from '@/lib/finance';
-import { CurrencyCode, currencyInfo, formatMoney, formatNumber } from '@/lib/money';
+import { CurrencyCode, currencyInfo, formatMoney, formatMoneyRounded, formatNumber } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
 import { CHART_LIGHT, CHART_OTHER, chartColor, IconName, slotColor, Theme, useTheme } from '@/theme';
@@ -22,7 +23,14 @@ type Props = {
   period: FinancePeriod;
   /** Abre el presupuesto de una categoría. */
   onBudget: (categoryId: string) => void;
+  /** Abre un gasto fijo, o el formulario de uno nuevo. */
+  onRecurring: (target: RecurringTarget) => void;
+  /** Lleva a la lista completa de fijos (en Planes). */
+  onSeeFixed: () => void;
 };
+
+/** Cuántos próximos cobros se ven en el Resumen. */
+const UPCOMING = 3;
 
 const levelColor = (level: BudgetLevel, theme: Theme, fallback: string) =>
   level === 'over' ? theme.danger : level === 'near' ? theme.warning : fallback;
@@ -42,7 +50,7 @@ const tickFormatter = (currency: CurrencyCode) => (n: number) => {
   return symbolAfter ? `${k} ${symbol}` : `${symbol}${k}`;
 };
 
-export function SummaryView({ range, period, onBudget }: Props) {
+export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }: Props) {
   const theme = useTheme();
   const today = useToday();
   const currency = useFinance((s) => s.currency);
@@ -51,6 +59,7 @@ export function SummaryView({ range, period, onBudget }: Props) {
   const platforms = useFinance((s) => s.platforms);
   const budgets = useFinance((s) => s.budgets);
   const profiles = useFinance((s) => s.profiles);
+  const recurring = useFinance((s) => s.recurring);
   const isDriver = profiles.includes('driver');
   const monthly = period === 'month';
   const [flowDay, setFlowDay] = useState<string | null>(null);
@@ -66,6 +75,10 @@ export function SummaryView({ range, period, onBudget }: Props) {
   const efficiency = useMemo(() => fuelEfficiency(transactions, range.end), [transactions, range.end]);
   const hasFuelCategory = categories.some((c) => c.id === FUEL_CATEGORY);
   const showFuel = hasFuelCategory && (isDriver || transactions.some((t) => t.fuel));
+  // Los gastos fijos miran a lo que viene: solo se ven en el periodo en curso.
+  const current = inRange(today, range);
+  const fixedList = useMemo(() => byNextCharge(recurring.filter((r) => r.kind === 'expense'), today), [recurring, today]);
+  const fixed = useMemo(() => fixedSummary(recurring, today), [recurring, today]);
   const formatTick = tickFormatter(currency);
   const money = (n: number) => formatMoney(n, currency);
 
@@ -257,6 +270,88 @@ export function SummaryView({ range, period, onBudget }: Props) {
         </Card>
       )}
 
+      {current && fixedList.length > 0 && (
+        <Card style={styles.card}>
+          <View style={styles.titleRow}>
+            <View style={styles.flex}>
+              <CardTitle icon="repeat" title="Gastos fijos" subtitle="Se apuntan solos el día que se cobran" />
+            </View>
+            <TextButton label="Agregar" icon="add" accessibilityLabel="Agregar gasto fijo" onPress={() => onRecurring('expense')} />
+          </View>
+          {fixed.month > 0 ? (
+            <View style={styles.fixedMonth}>
+              <View style={styles.fixedHead} accessible accessibilityLabel={`Gastos fijos este mes: ${money(fixed.month)}`}>
+                <Text style={[styles.fixedValue, { color: theme.text }]}>{money(fixed.month)}</Text>
+                <Text style={[styles.small, { color: theme.muted }]}>este mes</Text>
+              </View>
+              <ProgressBar progress={fixed.paid / fixed.month} color={chartColor(CHART_LIGHT[0], theme)} track={theme.surface} style={styles.bar} />
+              <Text style={[styles.small, { color: theme.muted }]}>
+                {fixed.pending === 0
+                  ? 'Ya se pagó todo lo de este mes.'
+                  : fixed.paid === 0
+                    ? `Aún no se cobra ninguno · faltan ${money(fixed.pending)}`
+                    : `Ya se pagaron ${money(fixed.paid)} · faltan ${money(fixed.pending)}`}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.muted, { color: theme.muted }]}>Este mes no toca ninguno.</Text>
+          )}
+          <View style={styles.list}>
+            {fixedList.slice(0, UPCOMING).map(({ recurring: r, date }) => {
+              const when = describeWhen(date, today);
+              return (
+                <Pressable
+                  key={r.id}
+                  onPress={() => onRecurring(r)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${r.name}: ${money(r.amount)}, ${when}`}
+                  style={({ pressed }) => [styles.categoryRow, pressed && { opacity: 0.7 }]}
+                >
+                  <PaymentBadge name={r.name} category={categoryMap.get(r.categoryId)} size={34} />
+                  <View style={styles.flex}>
+                    <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{r.name}</Text>
+                    <Text style={[styles.small, { color: theme.muted }]}>{when.charAt(0).toUpperCase() + when.slice(1)}</Text>
+                  </View>
+                  <Text style={[styles.amount, { color: theme.text }]}>{money(r.amount)}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {fixed.subscriptions > 0 && (
+            <Text style={[styles.hint, { color: theme.muted }]}>
+              En suscripciones se te van {formatMoneyRounded(fixed.subscriptions, currency)} al mes:{' '}
+              {formatMoneyRounded(fixed.subscriptions * 12, currency)} al año.
+            </Text>
+          )}
+          <Pressable onPress={onSeeFixed} accessibilityRole="button" hitSlop={6} style={({ pressed }) => [styles.seeAll, pressed && { opacity: 0.6 }]}>
+            <Text style={[styles.seeAllText, { color: theme.primary }]}>
+              {fixedList.length > UPCOMING ? `Ver los ${fixedList.length} gastos fijos` : 'Ver gastos fijos'}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={theme.primary} />
+          </Pressable>
+        </Card>
+      )}
+
+      {current && fixedList.length === 0 && (
+        <Pressable
+          onPress={() => onRecurring('expense')}
+          accessibilityRole="button"
+          accessibilityLabel="Agregar gasto fijo"
+          style={({ pressed }) => pressed && { opacity: 0.8 }}
+        >
+          <Card style={styles.cta}>
+            <View style={[styles.cardIcon, styles.ctaIcon, { backgroundColor: theme.surface }]}>
+              <Ionicons name="repeat" size={19} color={theme.text} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: theme.text }]}>¿Pagas Netflix, renta o internet?</Text>
+              <Text style={[styles.small, { color: theme.muted }]}>Agrégalos como gastos fijos y se apuntan solos cada mes.</Text>
+            </View>
+            <Ionicons name="add-circle" size={28} color={theme.primary} />
+          </Card>
+        </Pressable>
+      )}
+
       {!empty && (
         <Card style={styles.card}>
           <CardTitle icon="bar-chart" title="Día a día" subtitle="Ingresos arriba, gastos abajo" />
@@ -444,6 +539,14 @@ const styles = StyleSheet.create({
   cardIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cardTitleText: { fontSize: 16, fontWeight: '800' },
   cardSubtitle: { fontSize: 12.5, marginTop: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fixedMonth: { gap: 6 },
+  fixedHead: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  fixedValue: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  seeAll: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
+  seeAllText: { fontSize: 13.5, fontWeight: '700' },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  ctaIcon: { width: 38, height: 38, borderRadius: 12 },
   alert: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 16 },
   alertIcon: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   alertText: { flex: 1, fontSize: 13.5, fontWeight: '600' },

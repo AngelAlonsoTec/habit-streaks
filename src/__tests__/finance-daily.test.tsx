@@ -321,7 +321,7 @@ describe('estudiante: mesada, beca bimestral y una meta para el celular', () => 
     fireEvent.press(await screen.findByText('Planes'));
     expect(await screen.findByLabelText('$3,000 de $4,500 · 66 %')).toBeTruthy();
     expect(screen.getByText('Aparta $300 a la semana hasta el 31 ene 2027')).toBeTruthy();
-    expect(screen.getByText('El 20, cada 2 meses · próximo 20 feb 2027')).toBeTruthy();
+    expect(screen.getByText('El 20, cada 2 meses · llega el 20 feb 2027')).toBeTruthy();
   });
 });
 

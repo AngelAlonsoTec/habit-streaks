@@ -7,7 +7,7 @@ import {
   catalogCategory, CUSTOM_CATEGORY_COLOR, DEFAULT_PLATFORMS, dueDates, FinanceCategory, FUEL_CATEGORY, GoalInput, isCustomCategory,
   MAX_CATEGORY_LENGTH, MAX_GOAL_NAME_LENGTH, MAX_HOURS, MAX_LITERS, MAX_NOTE_LENGTH, MAX_ODOMETER, MAX_PLATFORM_LENGTH,
   MAX_TRIPS, mergeCategories, OTHER_CATEGORY, PlatformEarning, Profile, Recurring, RecurringInput, savedAmount, SavingsGoal, SHIFT_CATEGORY,
-  Transaction, TransactionInput, TxKind,
+  Transaction, TransactionInput, TxKind, withCatalogCategory,
 } from '@/lib/finance';
 import { CurrencyCode, DEFAULT_CURRENCY, MAX_MONEY, roundMoney } from '@/lib/money';
 import { chunkedStorage } from '@/lib/storage';
@@ -42,7 +42,10 @@ type FinanceState = FinanceData & {
   removePlatform: (name: string) => void;
   /** Presupuesto mensual; null lo quita. */
   setBudget: (categoryId: string, amount: number | null) => void;
-  /** Crea un fijo que cuenta desde `startDate` (hoy, salvo un bimestral que empieza el mes que viene). */
+  /**
+   * Crea un fijo que cuenta desde `startDate` (hoy, salvo un bimestral que empieza el mes que viene).
+   * Si su categoría es del catálogo y falta (Suscripciones para un conductor), la añade.
+   */
   addRecurring: (input: RecurringInput, today: DateKey, startDate?: DateKey) => string | null;
   updateRecurring: (id: string, input: Partial<RecurringInput & { startDate: DateKey }>) => void;
   /** Lo ya registrado se queda; solo deja de registrarse. */
@@ -209,26 +212,31 @@ export const useFinance = create<FinanceState>()(
 
       addRecurring: (input, today, startDate = today) => {
         if (!input.name.trim() || !(input.amount > 0)) return null;
+        const categories = withCatalogCategory(get().categories, input.categoryId);
         const r: Recurring = {
-          ...normalizeRecurring(input, get().categories),
+          ...normalizeRecurring(input, categories),
           id: randomUUID(),
           startDate: startDate > today ? startDate : today,
           lastApplied: null,
           createdAt: new Date().toISOString(),
         };
-        set((s) => ({ recurring: [...s.recurring, r] }));
+        set((s) => ({ categories, recurring: [...s.recurring, r] }));
         return r.id;
       },
 
       updateRecurring: (id, input) =>
-        set((s) => ({
-          recurring: s.recurring.map((r) => {
-            if (r.id !== id) return r;
-            const next = normalizeRecurring({ ...r, ...input }, s.categories);
-            // Un nombre vacío no deja el fijo sin nombre: se conserva el anterior.
-            return { ...r, ...next, name: next.name || r.name, startDate: input.startDate ?? r.startDate };
-          }),
-        })),
+        set((s) => {
+          const categories = input.categoryId ? withCatalogCategory(s.categories, input.categoryId) : s.categories;
+          return {
+            categories,
+            recurring: s.recurring.map((r) => {
+              if (r.id !== id) return r;
+              const next = normalizeRecurring({ ...r, ...input }, categories);
+              // Un nombre vacío no deja el fijo sin nombre: se conserva el anterior.
+              return { ...r, ...next, name: next.name || r.name, startDate: input.startDate ?? r.startDate };
+            }),
+          };
+        }),
 
       deleteRecurring: (id) => set((s) => ({ recurring: s.recurring.filter((r) => r.id !== id) })),
 
@@ -301,7 +309,7 @@ export const useFinance = create<FinanceState>()(
     }),
     {
       name: 'finance-store',
-      version: 2,
+      version: 3,
       // En trozos: años de movimientos superan lo que Android lee de una sola entrada.
       storage: createJSONStorage(() => chunkedStorage()),
       partialize: ({ profiles, currency, categories, platforms, transactions, recurring, budgets, goals }) => ({
@@ -322,6 +330,10 @@ export function migrateFinance(persisted: Partial<FinanceData>, version: number)
       const catalog = catalogCategory(c.id);
       return catalog ? { ...c, color: catalog.color, icon: catalog.icon } : c;
     });
+  }
+  if (version < 3 && state.profiles?.length) {
+    // v3: los conductores también tienen Renta, Servicios y Suscripciones (pagan casa y Netflix).
+    state.categories = mergeCategories(state.categories ?? [], state.profiles);
   }
   return state as FinanceData;
 }

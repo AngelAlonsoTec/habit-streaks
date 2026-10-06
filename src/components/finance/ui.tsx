@@ -5,8 +5,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FinanceCategory, knownService } from '@/lib/finance';
 import { CurrencyCode, currencyInfo } from '@/lib/money';
-import { IconName, inkOn, useTheme } from '@/theme';
+import { CHART_OTHER, chartColor, IconName, inkOn, useTheme } from '@/theme';
 
 /** Panel inferior. El contenido se monta solo mientras está abierto (cada apertura empieza de cero). */
 export function SheetModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
@@ -159,6 +160,31 @@ export function IconBadge({ icon, color, size = 38 }: { icon: IconName; color: s
   );
 }
 
+/**
+ * Insignia de un pago: si el nombre es de un servicio conocido (Netflix, Spotify…), su inicial con su
+ * color; si no, el icono de su categoría.
+ */
+export function PaymentBadge({ name, category, size = 38 }: { name: string; category: FinanceCategory | undefined; size?: number }) {
+  const theme = useTheme();
+  const service = knownService(name);
+  if (!service) {
+    return <IconBadge icon={category?.icon ?? 'repeat'} color={chartColor(category?.color ?? CHART_OTHER, theme)} size={size} />;
+  }
+  return (
+    <View
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.badge, { width: size, height: size, borderRadius: size * 0.32, backgroundColor: service.color }]}
+    >
+      <Text
+        allowFontScaling={false}
+        style={[styles.mono, { color: inkOn(service.color), fontSize: size * (service.mono.length > 1 ? 0.36 : 0.46) }]}
+      >
+        {service.mono}
+      </Text>
+    </View>
+  );
+}
+
 const inputReset = Platform.select({ web: { outlineWidth: 0 } });
 
 const styles = StyleSheet.create({
@@ -189,4 +215,5 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: 4, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
   badge: { alignItems: 'center', justifyContent: 'center' },
+  mono: { fontWeight: '900', letterSpacing: -0.3 },
 });

@@ -283,7 +283,7 @@ describe('fijos y metas', () => {
     setup(['worker']);
     renderRouter(APP_DIR, { initialUrl: '/finance' });
     fireEvent.press(await screen.findByText('Planes'));
-    fireEvent.press(screen.getByText('Nuevo fijo'));
+    fireEvent.press(screen.getByLabelText('Nuevo gasto fijo'));
     fireEvent.press(await screen.findByText('Internet'));
     type('Importe del fijo', '499');
     expect(screen.getByText('Hoy toca: se registrará en cuanto lo guardes.')).toBeTruthy();
@@ -291,30 +291,81 @@ describe('fijos y metas', () => {
 
     await waitFor(() => expect(finance().transactions).toHaveLength(1));
     expect(finance().transactions[0]).toMatchObject({ amount: 499, categoryId: 'servicios', note: 'Internet', date: '2026-10-06' });
-    expect(await screen.findByText('El 6 de cada mes · próximo 6 nov')).toBeTruthy();
+    expect(await screen.findByText('El 6 de cada mes · se cobra el 6 nov')).toBeTruthy();
   });
 
   it('el sueldo quincenal se cobra el 15 y el último día', async () => {
     setup(['worker']);
     renderRouter(APP_DIR, { initialUrl: '/finance' });
     fireEvent.press(await screen.findByText('Planes'));
-    fireEvent.press(screen.getByText('Nuevo fijo'));
-    // "Ingreso" y "Sueldo" también están detrás (acceso rápido) y en las categorías: el de la sugerencia va primero.
-    await screen.findByText('Nuevo pago o cobro fijo');
-    fireEvent.press(screen.getAllByText('Ingreso').at(-1)!);
+    fireEvent.press(screen.getByLabelText('Nuevo ingreso fijo'));
+    // "Sueldo" también está en las categorías: el de la sugerencia va primero.
+    await screen.findByText('Nuevo ingreso fijo');
     fireEvent.press(screen.getAllByText('Sueldo')[0]);
     type('Importe del fijo', '7500');
     expect(screen.getByText('Primer registro: 15 oct')).toBeTruthy();
     fireEvent.press(screen.getByText('Crear fijo'));
     await waitFor(() => expect(finance().recurring).toHaveLength(1));
     expect(finance().transactions).toHaveLength(0);
-    expect(screen.getByText('Cobros: unos $15,000 al mes')).toBeTruthy();
+    expect(screen.getByText('Unos $15,000 al mes.')).toBeTruthy();
 
     // Dos semanas después.
     act(() => {
       finance().applyRecurring('2026-10-31');
     });
     expect(finance().transactions.map((t) => t.date)).toEqual(['2026-10-15', '2026-10-31']);
+  });
+
+  it('un conductor agrega Netflix desde el Resumen y ve lo que se le va en fijos', async () => {
+    setup(['driver']);
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByLabelText('Agregar gasto fijo'));
+    await screen.findByText('Nuevo gasto fijo');
+    fireEvent.press(screen.getByLabelText('Netflix'));
+    type('Importe del fijo', '219');
+    // Se cobra hoy (el 6): se apunta en cuanto se guarda.
+    expect(screen.getByText('Hoy toca: se registrará en cuanto lo guardes.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Crear fijo'));
+    await waitFor(() => expect(finance().transactions).toHaveLength(1));
+    expect(finance().recurring[0]).toMatchObject({ name: 'Netflix', categoryId: 'suscripciones', frequency: 'monthly', day: 6 });
+    expect(finance().transactions[0]).toMatchObject({ amount: 219, categoryId: 'suscripciones', note: 'Netflix', date: '2026-10-06' });
+
+    // En el Resumen: lo de este mes, el próximo cobro y lo que cuestan las suscripciones al año.
+    expect(await screen.findByLabelText('Gastos fijos este mes: $219')).toBeTruthy();
+    expect(screen.getByText('Ya se pagó todo lo de este mes.')).toBeTruthy();
+    expect(screen.getByLabelText('Netflix: $219, el 6 nov')).toBeTruthy();
+    expect(screen.getByText(/En suscripciones se te van \$219 al mes: \$2,628 al año/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Ver gastos fijos'));
+    expect(await screen.findByText('El 6 de cada mes · se cobra el 6 nov')).toBeTruthy();
+  });
+
+  it('el Resumen dice cuánto falta de los fijos del mes y qué se cobra primero', async () => {
+    const fixed = (id: string, name: string, amount: number, categoryId: string, day: number): Recurring => ({
+      ...rent, id, name, amount, categoryId, day, startDate: '2026-09-01', lastApplied: '2026-10-06',
+    });
+    setup(['worker'], {
+      recurring: [rent, fixed('r2', 'Internet', 499, 'servicios', 20), fixed('r3', 'Netflix', 219, 'suscripciones', 8)],
+    });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    expect(await screen.findByLabelText('Gastos fijos este mes: $5,718')).toBeTruthy();
+    expect(screen.getByText('Ya se pagaron $5,000 · faltan $718')).toBeTruthy();
+    const upcoming = screen.getAllByLabelText(/^(Netflix|Internet|Renta): \$[\d,]+, /).map((e) => e.props.accessibilityLabel);
+    expect(upcoming).toEqual(['Netflix: $219, en 2 días', 'Internet: $499, el 20 oct', 'Renta: $5,000, el 1 nov']);
+  });
+
+  it('al escribir el nombre de un servicio se elige sola su categoría', async () => {
+    setup(['worker']);
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Planes'));
+    fireEvent.press(screen.getByLabelText('Nuevo gasto fijo'));
+    await screen.findByText('Nuevo gasto fijo');
+    type('Nombre del fijo', 'Spotify Duo');
+    type('Importe del fijo', '179');
+    fireEvent.press(screen.getByText('Crear fijo'));
+    await waitFor(() => expect(finance().recurring).toHaveLength(1));
+    expect(finance().recurring[0]).toMatchObject({ name: 'Spotify Duo', categoryId: 'suscripciones' });
+    expect(await screen.findByText('En suscripciones: $179 al mes.')).toBeTruthy();
   });
 
   it('meta de ahorro: crear, abonar lo del mes y lograrla', async () => {

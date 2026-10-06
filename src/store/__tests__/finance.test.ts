@@ -1,4 +1,6 @@
-import { useFinance } from '../finance';
+import { categoriesFor } from '@/lib/finance';
+
+import { migrateFinance, useFinance } from '../finance';
 
 const store = () => useFinance.getState();
 
@@ -180,6 +182,21 @@ describe('fijos', () => {
     expect(store().recurring.map((r) => r.day)).toEqual([6, 31]);
     expect(store().addRecurring({ ...rent, name: ' ' }, '2026-10-06')).toBeNull();
     expect(store().addRecurring({ ...rent, amount: 0 }, '2026-10-06')).toBeNull();
+  });
+
+  it('agregar Netflix sin tener "Suscripciones" añade la categoría', () => {
+    useFinance.setState({ categories: store().categories.filter((c) => c.id !== 'suscripciones') });
+    store().addRecurring({ ...rent, name: 'Netflix', amount: 219, categoryId: 'suscripciones', day: 20 }, '2026-10-06');
+    expect(store().recurring[0].categoryId).toBe('suscripciones');
+    expect(store().categories.map((c) => c.id)).toContain('suscripciones');
+  });
+
+  it('con datos de antes, el conductor recibe Renta, Servicios y Suscripciones', () => {
+    const old = categoriesFor(['driver']).filter((c) => !['renta', 'servicios', 'suscripciones'].includes(c.id));
+    const migrated = migrateFinance({ profiles: ['driver'], categories: old }, 2);
+    expect(migrated.categories.map((c) => c.id)).toEqual(categoriesFor(['driver']).map((c) => c.id));
+    // Sin perfil (Finanzas sin configurar) no se añade nada.
+    expect(migrateFinance({ profiles: [], categories: [] }, 2).categories).toEqual([]);
   });
 });
 

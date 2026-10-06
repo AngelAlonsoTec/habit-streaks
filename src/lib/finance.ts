@@ -67,7 +67,8 @@ const PROFILE_CATEGORIES: Record<Profile, string[]> = {
   ],
   driver: [
     'viajes', 'bonos', 'otros-ingresos',
-    'gasolina', 'mantenimiento', 'lavado', 'casetas', 'seguro-auto', 'renta-auto', 'comida', 'celular', 'otros-gastos',
+    'gasolina', 'mantenimiento', 'lavado', 'casetas', 'seguro-auto', 'renta-auto', 'comida', 'renta', 'servicios', 'celular',
+    'suscripciones', 'otros-gastos',
   ],
 };
 
@@ -86,13 +87,26 @@ export function categoriesFor(profiles: Profile[]): FinanceCategory[] {
  */
 export function mergeCategories(current: FinanceCategory[], profiles: Profile[]): FinanceCategory[] {
   const have = new Set(current.map((c) => c.id));
-  const added = categoriesFor(profiles).filter((c) => !have.has(c.id));
+  return sortByCatalog([...current, ...categoriesFor(profiles).filter((c) => !have.has(c.id))]);
+}
+
+/**
+ * Añade una categoría del catálogo que falte (p. ej., "Suscripciones" al elegir Netflix siendo solo
+ * conductor). Si ya está o no es del catálogo, devuelve las mismas.
+ */
+export function withCatalogCategory(current: FinanceCategory[], id: string): FinanceCategory[] {
+  const catalog = catalogCategory(id);
+  if (!catalog || current.some((c) => c.id === id)) return current;
+  return sortByCatalog([...current, catalog]);
+}
+
+/** Orden del catálogo; las propias, al final y en el orden en que se crearon (sort es estable). */
+function sortByCatalog(categories: FinanceCategory[]): FinanceCategory[] {
   const order = (c: FinanceCategory) => {
     const i = CATALOG.findIndex((x) => x.id === c.id);
     return i < 0 ? CATALOG.length : i;
   };
-  // Orden del catálogo; las propias, al final y en el orden en que se crearon (sort es estable).
-  return [...current, ...added].sort((a, b) => order(a) - order(b));
+  return [...categories].sort((a, b) => order(a) - order(b));
 }
 
 /** Las más usadas en los últimos 90 días primero (a igual uso, en su orden de siempre). */
@@ -711,6 +725,116 @@ export function describeFrequencyShort(r: Pick<Recurring, 'frequency' | 'day'>):
 export function monthlyEquivalent(r: Pick<Recurring, 'frequency' | 'amount'>): number {
   const times = { weekly: 52 / 12, biweekly: 2, monthly: 1, bimonthly: 1 / 2 }[r.frequency];
   return roundMoney(r.amount * times);
+}
+
+/** Lo que supone en un año (52 semanas, 24 quincenas, 12 meses o 6 bimestres). */
+export function yearlyEquivalent(r: Pick<Recurring, 'frequency' | 'amount'>): number {
+  const times = { weekly: 52, biweekly: 24, monthly: 12, bimonthly: 6 }[r.frequency];
+  return roundMoney(r.amount * times);
+}
+
+/** Cuándo toca, en corto: "mañana", "en 3 días" o "el 20 oct". */
+export function describeWhen(date: DateKey, today: DateKey): string {
+  const days = daysBetween(fromKey(today), fromKey(date));
+  if (days === 0) return 'hoy';
+  if (days === 1) return 'mañana';
+  if (days > 1 && days < 7) return `en ${days} días`;
+  return `el ${formatShortDate(date, today)}`;
+}
+
+/** Los fijos en el orden en que tocan (a igual fecha, por nombre). */
+export function byNextCharge(recurring: Recurring[], today: DateKey): { recurring: Recurring; date: DateKey }[] {
+  return recurring
+    .map((r) => ({ recurring: r, date: nextOccurrence(r, today) }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.recurring.name.localeCompare(b.recurring.name));
+}
+
+export type FixedSummary = {
+  /** Lo que suman los cobros de los gastos fijos en el mes de `today`. */
+  month: number;
+  /** De eso, lo que ya tocó (hasta hoy incluido) y lo que falta. */
+  paid: number;
+  pending: number;
+  /** Lo normal al mes y al año, con todos los gastos fijos. */
+  perMonth: number;
+  perYear: number;
+  /** Lo que se va en suscripciones (Netflix, Spotify…) al mes. */
+  subscriptions: number;
+};
+
+/** Cuánto se llevan los gastos fijos este mes, y al mes y al año en general. */
+export function fixedSummary(recurring: Recurring[], today: DateKey): FixedSummary {
+  const expenses = recurring.filter((r) => r.kind === 'expense');
+  const days = rangeDays(periodRange('month', 0, today));
+  let paid = 0;
+  let pending = 0;
+  for (const r of expenses) {
+    // Solo desde que existe: un fijo creado el 10 para el día 1 empieza a contar el mes que viene.
+    for (const day of days) {
+      if (day < r.startDate || !occursOn(r, fromKey(day))) continue;
+      if (day <= today) paid += r.amount;
+      else pending += r.amount;
+    }
+  }
+  const sum = (list: Recurring[], f: (r: Recurring) => number) => roundMoney(list.reduce((s, r) => s + f(r), 0));
+  return {
+    month: roundMoney(paid + pending),
+    paid: roundMoney(paid),
+    pending: roundMoney(pending),
+    perMonth: sum(expenses, monthlyEquivalent),
+    perYear: sum(expenses, yearlyEquivalent),
+    subscriptions: sum(expenses.filter((r) => r.categoryId === SUBSCRIPTIONS_CATEGORY), monthlyEquivalent),
+  };
+}
+
+// ---------- Servicios conocidos ----------
+
+export const SUBSCRIPTIONS_CATEGORY = 'suscripciones';
+
+/** Un servicio de pago que se reconoce por su nombre para mostrarlo con su inicial y su color. */
+export type KnownService = {
+  name: string;
+  /** Lo que va en su insignia (una o dos letras). */
+  mono: string;
+  color: string;
+  categoryId: string;
+  /** Cómo se reconoce: el nombre normalizado empieza así ("=" delante: tiene que ser exacto). */
+  keys: string[];
+};
+
+export const KNOWN_SERVICES: KnownService[] = [
+  { name: 'Netflix', mono: 'N', color: '#E50914', categoryId: 'suscripciones', keys: ['netflix'] },
+  { name: 'HBO Max', mono: 'H', color: '#5B2BE0', categoryId: 'suscripciones', keys: ['hbo', '=max'] },
+  { name: 'Disney+', mono: 'D+', color: '#113CCF', categoryId: 'suscripciones', keys: ['disney'] },
+  { name: 'Prime Video', mono: 'P', color: '#00A8E1', categoryId: 'suscripciones', keys: ['primevideo', 'amazonprime', '=prime'] },
+  { name: 'Spotify', mono: 'S', color: '#1DB954', categoryId: 'suscripciones', keys: ['spotify'] },
+  { name: 'YouTube Premium', mono: 'YT', color: '#FF0033', categoryId: 'suscripciones', keys: ['youtube'] },
+  { name: 'Apple TV+', mono: 'tv', color: '#6E6E73', categoryId: 'suscripciones', keys: ['appletv'] },
+  { name: 'Paramount+', mono: 'P+', color: '#0064FF', categoryId: 'suscripciones', keys: ['paramount'] },
+  { name: 'ViX', mono: 'V', color: '#FF5A00', categoryId: 'suscripciones', keys: ['vix'] },
+  { name: 'Crunchyroll', mono: 'C', color: '#F47521', categoryId: 'suscripciones', keys: ['crunchyroll'] },
+  { name: 'iCloud+', mono: 'iC', color: '#3693F3', categoryId: 'suscripciones', keys: ['icloud'] },
+  { name: 'Google One', mono: 'G', color: '#4285F4', categoryId: 'suscripciones', keys: ['googleone'] },
+  { name: 'Xbox Game Pass', mono: 'X', color: '#107C10', categoryId: 'suscripciones', keys: ['xbox', 'gamepass'] },
+  { name: 'PlayStation Plus', mono: 'PS', color: '#0070D1', categoryId: 'suscripciones', keys: ['playstation', 'psplus'] },
+  { name: 'ChatGPT Plus', mono: 'AI', color: '#10A37F', categoryId: 'suscripciones', keys: ['chatgpt'] },
+  { name: 'Microsoft 365', mono: 'M', color: '#D83B01', categoryId: 'suscripciones', keys: ['microsoft', 'office365'] },
+  { name: 'Duolingo', mono: 'D', color: '#58CC02', categoryId: 'suscripciones', keys: ['duolingo'] },
+  { name: 'Uber One', mono: 'U1', color: '#4B5563', categoryId: 'suscripciones', keys: ['uberone'] },
+  { name: 'Rappi Pro', mono: 'R', color: '#FF441F', categoryId: 'suscripciones', keys: ['rappi'] },
+  { name: 'Meli+', mono: 'M+', color: '#FFE600', categoryId: 'suscripciones', keys: ['meliplus', '=meli', 'mercadolibre'] },
+  { name: 'Smart Fit', mono: 'SF', color: '#F2B807', categoryId: 'salud', keys: ['smartfit'] },
+];
+
+/** "Disney Plus", "disney+" y "Disney+ Premium" se escriben igual: "disneyplus…". */
+const serviceKey = (name: string) =>
+  name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\+/g, 'plus').replace(/[^a-z0-9]/g, '');
+
+/** El servicio conocido al que se refiere un nombre ("Netflix premium" → Netflix), o null. */
+export function knownService(name: string): KnownService | null {
+  const key = serviceKey(name);
+  if (!key) return null;
+  return KNOWN_SERVICES.find((s) => s.keys.some((k) => (k.startsWith('=') ? key === k.slice(1) : key.startsWith(k)))) ?? null;
 }
 
 // ---------- Metas de ahorro ----------

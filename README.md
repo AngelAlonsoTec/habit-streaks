@@ -37,7 +37,8 @@
 - **Gasolina**: cada carga guarda litros y kilometraje; calcula el precio por litro, el rendimiento (km/l: exacto entre dos cargas de tanque lleno, o aproximado si siempre cargas una cantidad fija) y el costo por km, y avisa si el kilometraje parece mal escrito.
 - **Se escribe como se habla**: horas como `8:30` u `8h`, `45,230 km`, `30 lts`, `17 viajes`; si algo no se entiende, avisa en vez de ignorarlo. Las categorías más usadas salen primero.
 - **Presupuestos mensuales** por categoría: avisan desde el 80 % (incluso antes de guardar un gasto) y sugieren tu promedio de los meses anteriores.
-- **Pagos y cobros fijos** (renta, suscripciones, sueldo quincenal, mesada, luz, beca…): semanales, quincenales (15 y fin de mes), mensuales o bimestrales; se apuntan solos el día que tocan, aunque la app lleve tiempo sin abrirse.
+- **Gastos e ingresos fijos** (renta, Netflix, internet, sueldo quincenal, mesada, luz, beca…): semanales, quincenales (15 y fin de mes), mensuales o bimestrales; se apuntan solos el día que tocan, aunque la app lleve tiempo sin abrirse.
+- **Suscripciones**: Netflix, HBO Max, Disney+, Spotify y otras se eligen de un toque (o se reconocen al escribir su nombre) y salen con su inicial y su color. El Resumen dice cuánto se llevan los gastos fijos este mes (lo ya cobrado y lo que falta), qué se cobra primero y cuánto cuestan las suscripciones al año.
 - **Metas de ahorro** con fecha opcional: cuánto apartar al mes o a la semana para llegar a tiempo, abonos y retiros.
 
 ## Tecnologías
@@ -142,7 +143,7 @@ Los comandos de la app son los mismos en todos los sistemas; lo que cambia es c�
 | `npm start` | Arranca el servidor de desarrollo de Expo |
 | `npm run android` / `npm run ios` / `npm run web` | Arranca y abre directamente en el emulador de Android, el simulador de iOS (solo macOS) o el navegador |
 | `npm test` | Ejecuta las pruebas (Jest) |
-| `npm run test:tz` | Ejecuta las pruebas en varias zonas horarias (México, Los Ángeles, Madrid, Tokio y Auckland), incluida la simulación del día a día de Finanzas (`src/__tests__/finance-daily.test.tsx`) |
+| `npm run test:tz` | Ejecuta las pruebas en varias zonas horarias (México, Los Ángeles, Madrid, Tokio y Auckland), incluidas las simulaciones del día a día de Finanzas (`src/__tests__/finance-daily.test.tsx` y cuatro meses de uso en `src/testing/financeDemo.ts`) |
 | `npm run typecheck` | Comprueba los tipos de TypeScript |
 | `npm run lint` | Pasa ESLint |
 | `npm run icons` | Regenera todos los iconos de `assets/` desde el SVG de `scripts/generate-icons.js` |
@@ -153,6 +154,7 @@ Expo Go sirve para desarrollar rápido, pero no es la app final:
 
 - **Recordatorios**: no funcionan en Expo Go para Android, que no admite `expo-notifications` desde el SDK 53. La app lo detecta: los recordatorios se guardan y sonarán en la app instalada.
 - **Icono y pantalla de carga**: Expo Go muestra los suyos; los de Habit Streaks solo se ven en la app instalada.
+
 
 Para probar todo como en producción, genera la app con [EAS Build](https://docs.expo.dev/build/introduction/). Compila en la nube, así que funciona desde cualquier sistema operativo sin instalar Android Studio ni Xcode (necesitas una cuenta gratuita de Expo):
 
