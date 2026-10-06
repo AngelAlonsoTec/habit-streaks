@@ -82,6 +82,22 @@ export function Segmented<T extends string>({ value, options, onChange, color, s
   );
 }
 
+/** Botón redondo de icono para los encabezados propios de las pestañas. */
+export function HeaderButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.headerButton, pressed && { backgroundColor: theme.surface }]}
+    >
+      <Ionicons name={icon} size={23} color={theme.text} />
+    </Pressable>
+  );
+}
+
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   const theme = useTheme();
   return (
@@ -104,5 +120,6 @@ const styles = StyleSheet.create({
   },
   segmentText: { fontSize: 14 },
   bold: { fontWeight: '700' },
+  headerButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
 });

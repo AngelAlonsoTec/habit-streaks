@@ -10,8 +10,14 @@ type Props = {
   /** Fecha elegida, o null = sin fecha. */
   value: DateKey | null;
   onChange: (value: DateKey | null) => void;
-  /** Primer día que se puede elegir (normalmente hoy). */
-  minKey: DateKey;
+  /** Primer día que se puede elegir (para plazos, hoy). */
+  minKey?: DateKey;
+  /** Último día que se puede elegir (para registrar algo pasado, hoy). */
+  maxKey?: DateKey;
+  /** Atajos; por defecto, plazos desde `minKey`. */
+  presets?: { label: string; key: DateKey }[];
+  /** Ofrecer "Sin fecha". */
+  allowNone?: boolean;
   color: string;
 };
 
@@ -27,19 +33,23 @@ export function datePresets(today: DateKey): { label: string; key: DateKey }[] {
   ];
 }
 
-/** Elige una fecha (hoy o después): atajos y un calendario para un día concreto. */
-export function DatePicker({ value, onChange, minKey, color }: Props) {
+/** Elige una fecha dentro de unos límites: atajos y un calendario para un día concreto. */
+export function DatePicker({ value, onChange, minKey, maxKey, presets: customPresets, allowNone = true, color }: Props) {
   const theme = useTheme();
-  const presets = datePresets(minKey);
+  const presets = customPresets ?? (minKey ? datePresets(minKey) : []);
   const isPreset = presets.some((p) => p.key === value);
   const [showCalendar, setShowCalendar] = useState(value != null && !isPreset);
   // Mes que se ve en el calendario: el de la fecha elegida, o el actual.
   const [month, setMonth] = useState(() => {
-    const d = fromKey(value ?? minKey);
+    const d = fromKey(value ?? maxKey ?? minKey ?? toKey(new Date()));
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
-  const min = fromKey(minKey);
-  const canGoBack = month > new Date(min.getFullYear(), min.getMonth(), 1);
+  const monthStart = (key: DateKey) => {
+    const d = fromKey(key);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  };
+  const canGoBack = !minKey || month > monthStart(minKey);
+  const canGoForward = !maxKey || month < monthStart(maxKey);
 
   const weeks = useMemo(() => {
     const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
@@ -53,15 +63,17 @@ export function DatePicker({ value, onChange, minKey, color }: Props) {
   return (
     <View style={styles.gap}>
       <View style={styles.wrap}>
-        <Chip
-          label="Sin fecha"
-          color={color}
-          selected={value == null}
-          onPress={() => {
-            setShowCalendar(false);
-            onChange(null);
-          }}
-        />
+        {allowNone && (
+          <Chip
+            label="Sin fecha"
+            color={color}
+            selected={value == null}
+            onPress={() => {
+              setShowCalendar(false);
+              onChange(null);
+            }}
+          />
+        )}
         {presets.map((p) => (
           <Chip
             key={p.label}
@@ -97,10 +109,11 @@ export function DatePicker({ value, onChange, minKey, color }: Props) {
             <Text style={[styles.title, { color: theme.text }]}>{title.charAt(0).toUpperCase() + title.slice(1)}</Text>
             <Pressable
               onPress={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+              disabled={!canGoForward}
               hitSlop={10}
               accessibilityLabel="Mes siguiente"
             >
-              <Ionicons name="chevron-forward" size={20} color={theme.text} />
+              <Ionicons name="chevron-forward" size={20} color={canGoForward ? theme.text : theme.border} />
             </Pressable>
           </View>
           <View style={styles.row}>
@@ -113,19 +126,19 @@ export function DatePicker({ value, onChange, minKey, color }: Props) {
               {week.map((d) => {
                 const key = toKey(d);
                 if (d.getMonth() !== month.getMonth()) return <View key={key} style={styles.cell} />;
-                const past = key < minKey;
+                const outside = (minKey != null && key < minKey) || (maxKey != null && key > maxKey);
                 const selected = key === value;
                 return (
                   <Pressable
                     key={key}
-                    disabled={past}
+                    disabled={outside}
                     onPress={() => onChange(key)}
                     accessibilityLabel={`Elegir ${key}`}
-                    accessibilityState={{ selected, disabled: past }}
+                    accessibilityState={{ selected, disabled: outside }}
                     style={styles.cell}
                   >
                     <View style={[styles.day, selected && { backgroundColor: color }]}>
-                      <Text style={[styles.dayText, { color: selected ? '#FFFFFF' : past ? theme.border : theme.text }]}>
+                      <Text style={[styles.dayText, { color: selected ? '#FFFFFF' : outside ? theme.border : theme.text }]}>
                         {d.getDate()}
                       </Text>
                     </View>

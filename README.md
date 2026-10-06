@@ -5,16 +5,16 @@
 <h1 align="center">Habit Streaks</h1>
 
 <p align="center">
-  Registra tus hábitos día a día y mira cómo se llena tu gráfica al estilo GitHub.
+  Registra tus hábitos día a día y mira cómo se llena tu gráfica al estilo GitHub. Y lleva tus cuentas en el mismo sitio.
 </p>
 
 ---
 
 ## Qué es
 
-**Habit Streaks** es una app móvil de hábitos para Android, iOS y web. Cada hábito tiene su propio *heatmap* tipo GitHub: cada cuadrito es un día y su color muestra cuánto lo cumpliste. Los datos se guardan en el teléfono (sin cuenta ni conexión), y el modelo está preparado para añadir sincronización en la nube más adelante.
+**Habit Streaks** es una app móvil de hábitos para Android, iOS y web. Cada hábito tiene su propio *heatmap* tipo GitHub: cada cuadrito es un día y su color muestra cuánto lo cumpliste. Incluye una pestaña de **Finanzas** para llevar ingresos y gastos. Los datos se guardan en el teléfono (sin cuenta ni conexión), y el modelo está preparado para añadir sincronización en la nube más adelante.
 
-### Funciones
+### Hábitos
 
 - **Heatmap por hábito**: un bloque por mes con su nombre, e intensidad según el progreso del día.
 - **Metas flexibles**: una o varias veces al día (por ejemplo, 8 vasos de agua), días concretos de la semana o *N* veces por semana.
@@ -27,6 +27,17 @@
 - **Recordatorios** con una o varias horas que no avisan si ya cumpliste el hábito ese día.
 - **Detalle del hábito**: estadísticas, calendario mensual editable y gráfica de tus mejores días de la semana.
 - Menú con pulsación larga, vista compacta y modo claro/oscuro automático (incluido el icono de la app).
+
+### Finanzas
+
+- **Perfiles**: trabajador, estudiante o conductor de app (se pueden combinar); cada uno trae sus categorías.
+- **Movimientos**: ingresos y gastos por categoría, con fecha, nota y categorías propias. Los importes se escriben como se quiera (`$1,250.50`, `1.250,50`…) y se muestran en la moneda elegida (peso mexicano por defecto).
+- **Balance por semana o por mes**, con comparación con el periodo anterior, gastos e ingresos por categoría y lista de movimientos por día.
+- **Conductor de app**: jornadas por plataforma (Uber, DiDi, inDrive o las que añadas) con horas y viajes; ganancia bruta y neta por hora y por viaje, descontando los gastos del auto.
+- **Gasolina**: cada carga guarda litros y kilometraje; calcula el precio por litro, el rendimiento (km/l, por el método del tanque lleno) y el costo por km, y avisa si el kilometraje parece mal escrito.
+- **Presupuestos mensuales** por categoría: avisan desde el 80 % (incluso antes de guardar un gasto) y sugieren tu promedio de los meses anteriores.
+- **Pagos y cobros fijos** (renta, suscripciones, sueldo quincenal, mesada…): semanales, quincenales (15 y fin de mes) o mensuales; se apuntan solos el día que tocan, aunque la app lleve tiempo sin abrirse.
+- **Metas de ahorro** con fecha opcional: cuánto apartar al mes o a la semana para llegar a tiempo, abonos y retiros.
 
 ## Tecnologías
 
@@ -156,9 +167,9 @@ Los perfiles están definidos en `eas.json`.
 
 ```
 src/
-├── app/            Pantallas (Expo Router): Hoy, detalle, crear/editar, resumen
-├── components/     Heatmap, tarjetas, asistente de creación, calendario, etc.
-├── lib/            Lógica pura: fechas, reglas de hábitos, estadísticas, recordatorios
+├── app/            Pantallas (Expo Router): pestañas Hábitos y Finanzas, detalle, formularios, resumen
+├── components/     Heatmap, tarjetas, asistente de creación, calendario; finance/ para Finanzas
+├── lib/            Lógica pura: fechas, reglas de hábitos, estadísticas, recordatorios, dinero y finanzas
 ├── store/          Estado global y persistencia (Zustand + AsyncStorage)
 ├── theme/          Colores, modo claro/oscuro, iconos y paleta de hábitos
 └── testing/        Datos de ejemplo para las pruebas

@@ -8,31 +8,17 @@ import { HabitActionsSheet } from '@/components/HabitActionsSheet';
 import { HabitCard } from '@/components/HabitCard';
 import { ProgressRing } from '@/components/ProgressRing';
 import { RecordSheet } from '@/components/RecordSheet';
-import { Chip } from '@/components/ui';
+import { Chip, HeaderButton } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { DateKey, formatDayTitle, fromKey } from '@/lib/dates';
 import { Habit, isDoneFor, isQuit, isScheduledOn, TIME_OF_DAY, TIME_OF_DAY_ORDER } from '@/lib/habit';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
-import { IconName, useTheme } from '@/theme';
+import { useTheme } from '@/theme';
 
 const openNewHabit = () => router.push('/habit/new');
 
-function HeaderButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.headerButton, pressed && { backgroundColor: theme.surface }]}
-    >
-      <Ionicons name={icon} size={23} color={theme.text} />
-    </Pressable>
-  );
-}
 /** Espacio bajo la lista para que el botón flotante no tape la última tarjeta. */
 const FAB_SPACE = 104;
 /** A partir de cuántos hábitos se sugiere la vista compacta (una sola vez). */
@@ -133,7 +119,8 @@ export default function TodayScreen() {
           )}
         </View>
       </View>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FAB_SPACE }]}>
+      {/* La barra de pestañas ya deja el margen inferior del sistema. */}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: FAB_SPACE }]}>
         {habits.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="grid" size={56} color={theme.primary} />
@@ -278,7 +265,7 @@ export default function TodayScreen() {
           accessibilityLabel="Nuevo hábito"
           style={({ pressed }) => [
             styles.fab,
-            { backgroundColor: theme.primary, bottom: insets.bottom + 20, transform: [{ scale: pressed ? 0.94 : 1 }] },
+            { backgroundColor: theme.primary, bottom: 20, transform: [{ scale: pressed ? 0.94 : 1 }] },
           ]}
         >
           <Ionicons name="add" size={30} color="#FFFFFF" />
@@ -296,7 +283,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 4 },
   title: { fontSize: 30, fontWeight: '800', flexShrink: 1 },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   summary: {
     flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16,
     borderRadius: 18, borderWidth: StyleSheet.hairlineWidth,
