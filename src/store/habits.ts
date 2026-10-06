@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { randomUUID } from 'expo-crypto';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -7,6 +6,7 @@ import type { Category } from '@/lib/categories';
 import type { DateKey } from '@/lib/dates';
 import { ALL_DAYS, Completions, dailyTarget, Habit, HabitInput, MAX_AMOUNT, roundAmount, sortTimes } from '@/lib/habit';
 import { MAX_OBJECTIVE_LENGTH, Objective, ObjectiveInput } from '@/lib/objectives';
+import { chunkedStorage } from '@/lib/storage';
 
 export type { Habit, HabitInput } from '@/lib/habit';
 
@@ -172,7 +172,8 @@ export const useHabits = create<HabitsState>()(
       // Clave de cuando la app se llamaba MyHabits; no cambiarla o se pierden los datos guardados.
       name: 'myhabits-store',
       version: 7,
-      storage: createJSONStorage(() => AsyncStorage),
+      // Igual que siempre mientras quepa en una entrada; si algún día crece mucho, en trozos.
+      storage: createJSONStorage(() => chunkedStorage()),
       partialize: ({ habits, completions, customCategories, settings }) => ({ habits, completions, customCategories, settings }),
       migrate: (persisted, version) => migrate(persisted as PersistedAny, version),
       onRehydrateStorage: () => () => useHabits.setState({ hasHydrated: true }),

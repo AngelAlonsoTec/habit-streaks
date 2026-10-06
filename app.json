@@ -58,6 +58,12 @@
         {
           "source": "./assets/android-night"
         }
+      ],
+      [
+        "./plugins/with-async-storage-size",
+        {
+          "sizeMB": 64
+        }
       ]
     ],
     "scheme": "habitstreaks",
