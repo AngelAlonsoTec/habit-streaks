@@ -14,8 +14,8 @@ type Props = {
 
 /**
  * Los últimos 7 días, para ver y marcar días anteriores. Una sola tarjeta: cada día con su anillo
- * de progreso; el elegido, con el número en un círculo relleno; los completos, con el anillo cerrado
- * y el número en color; hoy, con un punto debajo.
+ * de progreso; el elegido, con la inicial en color y el número en un círculo relleno; los completos,
+ * con el anillo cerrado y el número en color; hoy, con un punto debajo.
  */
 export function WeekStrip({ selected, onSelect, progressFor }: Props) {
   const theme = useTheme();
@@ -38,11 +38,8 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             accessibilityLabel={`Ver ${key}`}
-            style={({ pressed }) => [
-              styles.day,
-              isSelected && { backgroundColor: theme.primary + (theme.dark ? '1F' : '14') },
-              pressed && !isSelected && { backgroundColor: theme.surface },
-            ]}
+            // Sin fondo de columna (se veía como un cuadro): el círculo relleno ya marca el día elegido.
+            style={({ pressed }) => [styles.day, pressed && styles.pressed]}
           >
             <Text style={[styles.weekday, { color: isSelected ? theme.primary : theme.muted }]}>
               {WEEKDAY_LABELS[weekdayIndex(d)]}
@@ -74,7 +71,8 @@ export function WeekStrip({ selected, onSelect, progressFor }: Props) {
 
 const styles = StyleSheet.create({
   strip: { flexDirection: 'row', borderRadius: 22, paddingHorizontal: 6, paddingVertical: 6 },
-  day: { flex: 1, alignItems: 'center', gap: 6, paddingTop: 9, paddingBottom: 7, borderRadius: 16 },
+  day: { flex: 1, alignItems: 'center', gap: 6, paddingTop: 9, paddingBottom: 7 },
+  pressed: { opacity: 0.6 },
   weekday: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
   inner: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   number: { fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
