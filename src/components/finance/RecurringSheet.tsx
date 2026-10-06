@@ -4,7 +4,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { FitGrid } from '@/components/FitGrid';
 import { AmountInput, PrimaryButton, SheetHeader, SheetModal, TextButton } from '@/components/finance/ui';
 import { Chip, SectionTitle, Segmented } from '@/components/ui';
-import { formatShortDate, fromKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
+import { DateKey, formatShortDate, fromKey, toKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
 import {
   describeFrequency, Frequency, FREQUENCIES, MAX_NOTE_LENGTH, nextOccurrence, occursOn, Recurring, TxKind,
 } from '@/lib/finance';
@@ -19,6 +19,8 @@ type Suggestion = { name: string; categoryId: string; frequency: Frequency };
 const SUGGESTIONS: Record<TxKind, Suggestion[]> = {
   expense: [
     { name: 'Renta', categoryId: 'renta', frequency: 'monthly' },
+    { name: 'Luz', categoryId: 'servicios', frequency: 'bimonthly' },
+    { name: 'Agua', categoryId: 'servicios', frequency: 'bimonthly' },
     { name: 'Internet', categoryId: 'servicios', frequency: 'monthly' },
     { name: 'Plan del celular', categoryId: 'celular', frequency: 'monthly' },
     { name: 'Netflix', categoryId: 'suscripciones', frequency: 'monthly' },
@@ -31,6 +33,7 @@ const SUGGESTIONS: Record<TxKind, Suggestion[]> = {
     { name: 'Sueldo', categoryId: 'sueldo', frequency: 'biweekly' },
     { name: 'Mesada', categoryId: 'mesada', frequency: 'weekly' },
     { name: 'Beca', categoryId: 'beca', frequency: 'monthly' },
+    { name: 'Beca Benito Juárez', categoryId: 'beca', frequency: 'bimonthly' },
   ],
 };
 
@@ -69,13 +72,28 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
   const [categoryId, setCategoryId] = useState<string | null>(recurring?.categoryId ?? null);
   const [frequency, setFrequency] = useState<Frequency>(recurring?.frequency ?? 'monthly');
   const [weekday, setWeekday] = useState(recurring?.frequency === 'weekly' ? recurring.day : weekdayIndex(t));
-  const [monthDay, setMonthDay] = useState(recurring?.frequency === 'monthly' ? recurring.day : t.getDate());
+  const [monthDay, setMonthDay] = useState(
+    recurring?.frequency === 'monthly' || recurring?.frequency === 'bimonthly' ? recurring.day : t.getDate(),
+  );
+  // Bimestral: si el próximo toca este mes o el que viene (la luz llega un mes sí y otro no).
+  const [nextMonth, setNextMonth] = useState(() => {
+    if (!recurring) return false;
+    const start = fromKey(recurring.startDate);
+    return ((t.getFullYear() - start.getFullYear()) * 12 + t.getMonth() - start.getMonth()) % 2 !== 0;
+  });
 
   const amount = parseMoney(amountText, currency);
   const kindCategories = categories.filter((c) => c.kind === kind);
   const category = kindCategories.find((c) => c.id === categoryId);
   const color = category?.color ?? (kind === 'income' ? theme.primary : theme.danger);
-  const day = frequency === 'weekly' ? weekday : frequency === 'monthly' ? monthDay : 0;
+  const monthName = (offset: number) =>
+    new Date(t.getFullYear(), t.getMonth() + offset, 1).toLocaleDateString('es-ES', { month: 'long' });
+  const byMonthDay = frequency === 'monthly' || frequency === 'bimonthly';
+  const day = frequency === 'weekly' ? weekday : byMonthDay ? monthDay : 0;
+  // Desde cuándo cuenta: hoy, o el mes que viene si el bimestral no toca este.
+  const startDate: DateKey = frequency === 'bimonthly' && nextMonth
+    ? toKey(new Date(t.getFullYear(), t.getMonth() + 1, 1))
+    : recurring && frequency === 'bimonthly' ? `${today.slice(0, 7)}-01` : today;
   const valid = name.trim().length > 0 && amount != null && category != null;
   const suggestions = !recurring && !name.trim()
     ? SUGGESTIONS[kind].filter((s) => kindCategories.some((c) => c.id === s.categoryId))
@@ -83,13 +101,10 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
 
   // Un fijo nuevo empieza hoy: si hoy toca, se registra en cuanto se guarda.
   const preview = recurring
-    ? `Próximo registro: ${formatShortDate(nextOccurrence({ ...recurring, frequency, day }, today), today)}`
-    : occursOn({ frequency, day }, t)
+    ? `Próximo registro: ${formatShortDate(nextOccurrence({ frequency, day, startDate }, today), today)}`
+    : occursOn({ frequency, day, startDate }, t)
       ? 'Hoy toca: se registrará en cuanto lo guardes.'
-      : `Primer registro: ${formatShortDate(
-          nextOccurrence({ frequency, day, startDate: today }, today),
-          today,
-        )}`;
+      : `Primer registro: ${formatShortDate(nextOccurrence({ frequency, day, startDate }, today), today)}`;
 
   const changeKind = (k: TxKind) => {
     setKind(k);
@@ -105,8 +120,8 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
   const save = () => {
     if (!valid) return;
     const input = { kind, name, amount, categoryId: category.id, frequency, day };
-    if (recurring) updateRecurring(recurring.id, input);
-    else addRecurring(input, today);
+    if (recurring) updateRecurring(recurring.id, frequency === 'bimonthly' ? { ...input, startDate } : input);
+    else addRecurring(input, today, startDate);
     applyRecurring(today);
     onClose();
   };
@@ -183,7 +198,7 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
             ))}
           </View>
         )}
-        {frequency === 'monthly' && (
+        {byMonthDay && (
           <View style={styles.spaced}>
             <FitGrid
               items={MONTH_DAYS}
@@ -204,8 +219,23 @@ function Body({ recurring, onClose }: { recurring: Recurring | null; onClose: ()
             />
           </View>
         )}
-        {frequency === 'monthly' && monthDay > 28 && (
+        {byMonthDay && monthDay > 28 && (
           <Text style={[styles.note, { color: theme.muted }]}>En los meses más cortos se registra el último día.</Text>
+        )}
+        {frequency === 'bimonthly' && (
+          <>
+            <Text style={[styles.note, { color: theme.muted }]}>¿Cuándo toca el próximo?</Text>
+            <Segmented
+              value={nextMonth ? 'next' : 'this'}
+              onChange={(v) => setNextMonth(v === 'next')}
+              options={[
+                { value: 'this', label: `En ${monthName(0)}` },
+                { value: 'next', label: `En ${monthName(1)}` },
+              ]}
+              color={color}
+              style={styles.spaced}
+            />
+          </>
         )}
         {frequency === 'biweekly' && (
           <Text style={[styles.note, { color: theme.muted }]}>Se registra el día 15 y el último día de cada mes.</Text>

@@ -1,7 +1,7 @@
 import type { IconName } from '@/theme';
 
 import { addDays, DateKey, daysBetween, formatShortDate, fromKey, startOfWeek, toKey, weekdayIndex } from './dates';
-import { roundMoney } from './money';
+import { CurrencyCode, parseMoney, roundMoney } from './money';
 
 // ---------- Perfiles y categorías ----------
 
@@ -95,6 +95,14 @@ export function mergeCategories(current: FinanceCategory[], profiles: Profile[])
   return [...current, ...added].sort((a, b) => order(a) - order(b));
 }
 
+/** Las más usadas en los últimos 90 días primero (a igual uso, en su orden de siempre). */
+export function sortByUse(categories: FinanceCategory[], transactions: Transaction[], today: DateKey): FinanceCategory[] {
+  const since = toKey(addDays(fromKey(today), -90));
+  const uses = new Map<string, number>();
+  for (const t of transactions) if (t.date >= since) uses.set(t.categoryId, (uses.get(t.categoryId) ?? 0) + 1);
+  return [...categories].sort((a, b) => (uses.get(b.id) ?? 0) - (uses.get(a.id) ?? 0));
+}
+
 export function isCustomCategory(id: string): boolean {
   return !CATALOG.some((c) => c.id === id);
 }
@@ -104,12 +112,21 @@ export const MAX_PLATFORM_LENGTH = 20;
 
 // ---------- Movimientos ----------
 
+/** Lo que dejó una plataforma en una jornada. */
+export type PlatformEarning = { platform: string; amount: number; trips: number | null };
+
 export type ShiftInfo = {
-  platform: string;
-  /** Horas conectado (null si no se apuntaron). */
+  /** Una o varias: muchos conductores tienen Uber y DiDi abiertas a la vez. */
+  platforms: PlatformEarning[];
+  /** Horas conectado en total, contadas una sola vez aunque hubiera varias apps (null si no se apuntaron). */
   hours: number | null;
-  trips: number | null;
 };
+
+/** Viajes de la jornada (null si no se apuntó ninguno). */
+export function shiftTrips(shift: ShiftInfo): number | null {
+  const withTrips = shift.platforms.filter((p) => p.trips);
+  return withTrips.length ? withTrips.reduce((s, p) => s + p.trips!, 0) : null;
+}
 
 export type FuelInfo = {
   liters: number | null;
@@ -140,6 +157,43 @@ export const MAX_HOURS = 24;
 export const MAX_TRIPS = 200;
 export const MAX_LITERS = 1000;
 export const MAX_ODOMETER = 9_999_999;
+
+// ---------- Lo que se escribe a mano ----------
+
+/** La unidad que la gente escribe detrás del número: "45,230 km", "30 lts", "17 viajes". */
+const UNIT_SUFFIX = /\s*(kms?|kil[oó]metros?|l|lts?|litros?|viajes?|h|hrs?|horas?)\.?$/i;
+
+/** Número de un campo con unidad (litros, km, viajes). Con `integer` se redondea. */
+export function parseQuantity(text: string, currency: CurrencyCode, integer = false): number | null {
+  const n = parseMoney(text.trim().replace(UNIT_SUFFIX, ''), currency);
+  return n == null ? null : integer ? Math.round(n) : n;
+}
+
+/** Horas como se escriben: "8", "8.5", "8,5", "8:30", "8h", "8 h 30", "8h30min", "45 min". */
+export function parseHours(text: string, currency: CurrencyCode): number | null {
+  const s = text.trim().toLowerCase();
+  const clock = /^(\d{1,2})\s*(?::|h|hrs?|horas?)\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/.exec(s);
+  const minutesOnly = /^(\d{1,4})\s*(?:m|min|minutos?)$/.exec(s);
+  let hours: number | null;
+  if (clock) {
+    const minutes = clock[2] ? Number(clock[2]) : 0;
+    hours = minutes < 60 ? Number(clock[1]) + minutes / 60 : null;
+  } else if (minutesOnly) {
+    hours = Number(minutesOnly[1]) / 60;
+  } else {
+    hours = parseQuantity(s, currency);
+  }
+  return hours != null && hours > 0 ? Math.round(hours * 100) / 100 : null;
+}
+
+/** "8 h", "8 h 30 min", "45 min". */
+export function formatHours(hours: number): string {
+  const total = Math.round(hours * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
 
 /** Más recientes primero; en el mismo día, el último registrado arriba. */
 export function byNewest(a: Pick<Transaction, 'date' | 'createdAt'>, b: Pick<Transaction, 'date' | 'createdAt'>): number {
@@ -282,22 +336,23 @@ export type DriverStats = {
   perTrip: number | null;
 };
 
-type Acc = { income: number; hours: number; incomeWithHours: number; trips: number; incomeWithTrips: number; shifts: number };
+type Acc = {
+  income: number;
+  hours: number;
+  incomeWithHours: number;
+  trips: number;
+  incomeWithTrips: number;
+  shifts: number;
+  /** Jornadas compartidas con otra app: sus horas no se pueden repartir. */
+  shared: number;
+};
 
-const emptyAcc = (): Acc => ({ income: 0, hours: 0, incomeWithHours: 0, trips: 0, incomeWithTrips: 0, shifts: 0 });
+const emptyAcc = (): Acc => ({ income: 0, hours: 0, incomeWithHours: 0, trips: 0, incomeWithTrips: 0, shifts: 0, shared: 0 });
 
-function addShift(acc: Acc, t: Transaction) {
-  acc.income += t.amount;
-  acc.shifts += 1;
-  // Por hora y por viaje solo con las jornadas que los apuntaron (si no, saldría inflado).
-  if (t.shift?.hours) {
-    acc.hours += t.shift.hours;
-    acc.incomeWithHours += t.amount;
-  }
-  if (t.shift?.trips) {
-    acc.trips += t.shift.trips;
-    acc.incomeWithTrips += t.amount;
-  }
+function addTrips(acc: Acc, p: PlatformEarning) {
+  if (!p.trips) return;
+  acc.trips += p.trips;
+  acc.incomeWithTrips += p.amount;
 }
 
 const rate = (amount: number, per: number) => (per > 0 ? roundMoney(amount / per) : null);
@@ -309,10 +364,28 @@ export function driverStats(transactions: Transaction[], range: Range): DriverSt
   for (const t of transactions) {
     if (!inRange(t.date, range)) continue;
     if (t.kind === 'income' && t.shift) {
-      addShift(total, t);
-      const acc = byPlatform.get(t.shift.platform) ?? emptyAcc();
-      addShift(acc, t);
-      byPlatform.set(t.shift.platform, acc);
+      const { platforms, hours } = t.shift;
+      total.income += t.amount;
+      total.shifts += 1;
+      // Por hora y por viaje solo con las jornadas que los apuntaron (si no, saldría inflado).
+      if (hours) {
+        total.hours += hours;
+        total.incomeWithHours += t.amount;
+      }
+      for (const p of platforms) {
+        addTrips(total, p);
+        const acc = byPlatform.get(p.platform) ?? emptyAcc();
+        acc.income += p.amount;
+        acc.shifts += 1;
+        addTrips(acc, p);
+        // Con varias apps a la vez las horas no se pueden repartir entre ellas.
+        if (platforms.length > 1) acc.shared += 1;
+        else if (hours) {
+          acc.hours += hours;
+          acc.incomeWithHours += p.amount;
+        }
+        byPlatform.set(p.platform, acc);
+      }
     } else if (t.kind === 'expense' && VEHICLE_CATEGORIES.includes(t.categoryId)) {
       vehicleCosts += t.amount;
     }
@@ -321,10 +394,11 @@ export function driverStats(transactions: Transaction[], range: Range): DriverSt
     .map(([platform, a]) => ({
       platform,
       income: roundMoney(a.income),
-      hours: roundMoney(a.hours),
+      // Por hora y plataforma solo si siempre se usó sola: si no, "9 h" de Uber engañaría.
+      hours: a.shared ? 0 : roundMoney(a.hours),
       trips: a.trips,
       shifts: a.shifts,
-      perHour: rate(a.incomeWithHours, a.hours),
+      perHour: a.shared ? null : rate(a.incomeWithHours, a.hours),
       perTrip: rate(a.incomeWithTrips, a.trips),
     }))
     .sort((a, b) => b.income - a.income);
@@ -365,7 +439,14 @@ export function fuelStats(transactions: Transaction[], range: Range): FuelStats 
 
 const byDate = (a: Transaction, b: Transaction) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt);
 
-export type Efficiency = { kmPerLiter: number; costPerKm: number; km: number; intervals: number };
+export type Efficiency = {
+  kmPerLiter: number;
+  costPerKm: number;
+  km: number;
+  intervals: number;
+  /** Aproximado con cargas parciales (no hay dos llenas seguidas que medir). */
+  estimated: boolean;
+};
 
 /**
  * Rendimiento por el método del tanque lleno: entre dos cargas llenas con kilometraje, los km
@@ -404,7 +485,7 @@ export function fuelEfficiency(transactions: Transaction[], until?: DateKey, max
     cost = 0;
   }
   const last = intervals.slice(-maxIntervals);
-  if (!last.length) return null;
+  if (!last.length) return estimateEfficiency(fills);
   const km = last.reduce((s, i) => s + i.km, 0);
   const totalLiters = last.reduce((s, i) => s + i.liters, 0);
   const totalCost = last.reduce((s, i) => s + i.cost, 0);
@@ -413,6 +494,37 @@ export function fuelEfficiency(transactions: Transaction[], until?: DateKey, max
     costPerKm: roundMoney(totalCost / km),
     km,
     intervals: last.length,
+    estimated: false,
+  };
+}
+
+/** Cargas y kilómetros mínimos para dar una aproximación con cargas parciales. */
+const ESTIMATE_MIN_FILLS = 3;
+const ESTIMATE_MIN_KM = 300;
+const ESTIMATE_MAX_FILLS = 10;
+
+/**
+ * Aproximación para quien nunca llena el tanque ("póngale 300"): entre la primera y la última
+ * de las últimas cargas con kilometraje, los km entre los litros cargados después de la primera.
+ * El error es lo que cambie el nivel del tanque entre una y otra, que se diluye con más cargas.
+ */
+function estimateEfficiency(fills: Transaction[]): Efficiency | null {
+  const recent = fills.slice(-ESTIMATE_MAX_FILLS);
+  const firstIndex = recent.findIndex((f) => f.fuel?.odometer != null);
+  const lastIndex = recent.findLastIndex((f) => f.fuel?.odometer != null);
+  if (firstIndex < 0 || lastIndex - firstIndex < ESTIMATE_MIN_FILLS - 1) return null;
+  const after = recent.slice(firstIndex + 1, lastIndex + 1);
+  if (after.some((f) => f.fuel?.liters == null)) return null;
+  const km = recent[lastIndex].fuel!.odometer! - recent[firstIndex].fuel!.odometer!;
+  const liters = after.reduce((s, f) => s + f.fuel!.liters!, 0);
+  const cost = after.reduce((s, f) => s + f.amount, 0);
+  if (km < ESTIMATE_MIN_KM || !liters || km / liters < 1 || km / liters > 100) return null;
+  return {
+    kmPerLiter: Math.round((km / liters) * 10) / 10,
+    costPerKm: roundMoney(cost / km),
+    km,
+    intervals: after.length,
+    estimated: true,
   };
 }
 
@@ -427,7 +539,7 @@ export function lastOdometer(transactions: Transaction[], date: DateKey, exclude
 
 // ---------- Fijos ----------
 
-export type Frequency = 'weekly' | 'biweekly' | 'monthly';
+export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly';
 
 export type Recurring = {
   id: string;
@@ -436,9 +548,12 @@ export type Recurring = {
   amount: number;
   categoryId: string;
   frequency: Frequency;
-  /** Semanal: día de la semana (0 = lunes). Mensual: día del mes (1-31). Quincenal: no se usa (15 y fin de mes). */
+  /**
+   * Semanal: día de la semana (0 = lunes). Mensual y bimestral: día del mes (1-31).
+   * Quincenal: no se usa (15 y fin de mes).
+   */
   day: number;
-  /** Desde cuándo cuenta: no se registra nada anterior. */
+  /** Desde cuándo cuenta: no se registra nada anterior. En los bimestrales, su mes marca los meses que tocan. */
   startDate: DateKey;
   /** Última fecha que ya se registró (null si todavía ninguna). */
   lastApplied: DateKey | null;
@@ -451,12 +566,13 @@ export const FREQUENCIES: { value: Frequency; label: string }[] = [
   { value: 'weekly', label: 'Semanal' },
   { value: 'biweekly', label: 'Quincenal' },
   { value: 'monthly', label: 'Mensual' },
+  { value: 'bimonthly', label: 'Bimestral' },
 ];
 
 const WEEKDAY_PLURAL = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados', 'domingos'];
 const WEEKDAY_SINGULAR = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 
-export function occursOn(r: Pick<Recurring, 'frequency' | 'day'>, date: Date): boolean {
+export function occursOn(r: Pick<Recurring, 'frequency' | 'day' | 'startDate'>, date: Date): boolean {
   const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   switch (r.frequency) {
     case 'weekly':
@@ -466,6 +582,12 @@ export function occursOn(r: Pick<Recurring, 'frequency' | 'day'>, date: Date): b
     case 'monthly':
       // El 31 en un mes de 30 días (o febrero) toca el último día del mes.
       return date.getDate() === Math.min(r.day, lastDay);
+    case 'bimonthly': {
+      // Como la luz o la beca: un mes sí y otro no, contando desde el mes de inicio.
+      const start = fromKey(r.startDate);
+      const months = (date.getFullYear() - start.getFullYear()) * 12 + date.getMonth() - start.getMonth();
+      return months % 2 === 0 && date.getDate() === Math.min(r.day, lastDay);
+    }
   }
 }
 
@@ -498,6 +620,8 @@ export function describeFrequency(r: Pick<Recurring, 'frequency' | 'day'>): stri
       return 'Cada quincena (15 y fin de mes)';
     case 'monthly':
       return r.day >= 31 ? 'Cada mes, el último día' : `Cada mes, el día ${r.day}`;
+    case 'bimonthly':
+      return r.day >= 31 ? 'Cada dos meses, el último día' : `Cada dos meses, el día ${r.day}`;
   }
 }
 
@@ -510,12 +634,14 @@ export function describeFrequencyShort(r: Pick<Recurring, 'frequency' | 'day'>):
       return 'Cada quincena';
     case 'monthly':
       return r.day >= 31 ? 'Fin de cada mes' : `El ${r.day} de cada mes`;
+    case 'bimonthly':
+      return r.day >= 31 ? 'Fin de mes, cada 2 meses' : `El ${r.day}, cada 2 meses`;
   }
 }
 
 /** Lo que supone al mes (una semanal pesa 52/12 veces). */
 export function monthlyEquivalent(r: Pick<Recurring, 'frequency' | 'amount'>): number {
-  const times = r.frequency === 'weekly' ? 52 / 12 : r.frequency === 'biweekly' ? 2 : 1;
+  const times = { weekly: 52 / 12, biweekly: 2, monthly: 1, bimonthly: 1 / 2 }[r.frequency];
   return roundMoney(r.amount * times);
 }
 

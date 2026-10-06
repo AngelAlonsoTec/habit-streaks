@@ -201,20 +201,28 @@ describe('presupuestos', () => {
 
 describe('conductor de app', () => {
   it('una jornada calcula por hora y por viaje, y repite la última plataforma', async () => {
-    setup(['driver'], { transactions: [makeTx({ kind: 'income', categoryId: 'viajes', amount: 900, date: '2026-10-05', shift: { platform: 'DiDi', hours: 6, trips: 10 } })] });
+    setup(['driver'], {
+      transactions: [makeTx({
+        kind: 'income', categoryId: 'viajes', amount: 900, date: '2026-10-05',
+        shift: { platforms: [{ platform: 'DiDi', amount: 900, trips: 10 }], hours: 6 },
+      })],
+    });
     renderRouter(APP_DIR, { initialUrl: '/finance' });
     fireEvent.press(await screen.findByLabelText('Registrar jornada'));
-    await screen.findByLabelText('Importe');
-    type('Importe', '1450');
-    type('Horas conectado', '8.5');
-    type('Viajes', '17');
+    await screen.findByLabelText('Ganancia en DiDi');
+    type('Ganancia en DiDi', '1450');
+    type('Horas conectado', '8:30');
+    type('Viajes en DiDi', '17');
     expect(screen.getByText('$170.59 por hora · $85.29 por viaje')).toBeTruthy();
     fireEvent.press(screen.getByText('Guardar jornada'));
 
     await waitFor(() => expect(finance().transactions).toHaveLength(2));
-    expect(finance().transactions[1].shift).toEqual({ platform: 'DiDi', hours: 8.5, trips: 17 });
-    // Semana: 2350 en 14,5 h y 27 viajes.
-    expect(await screen.findByText('14.5 h · 27 viajes · $162.07/h · $87.04/viaje')).toBeTruthy();
+    expect(finance().transactions[1]).toMatchObject({
+      amount: 1450,
+      shift: { platforms: [{ platform: 'DiDi', amount: 1450, trips: 17 }], hours: 8.5 },
+    });
+    // Semana: 2350 en 14 h 30 min y 27 viajes.
+    expect(await screen.findByText('14 h 30 min · 27 viajes · $162.07/h · $87.04/viaje')).toBeTruthy();
   });
 
   it('gasolina: avisa si el kilometraje baja y calcula el rendimiento', async () => {
@@ -238,7 +246,10 @@ describe('conductor de app', () => {
   it('lo que deja manejar descuenta los gastos del auto, no la comida', async () => {
     setup(['driver'], {
       transactions: [
-        makeTx({ kind: 'income', categoryId: 'viajes', amount: 2000, date: '2026-10-05', shift: { platform: 'Uber', hours: 10, trips: 20 } }),
+        makeTx({
+          kind: 'income', categoryId: 'viajes', amount: 2000, date: '2026-10-05',
+          shift: { platforms: [{ platform: 'Uber', amount: 2000, trips: 20 }], hours: 10 },
+        }),
         makeTx({ categoryId: 'gasolina', amount: 500, date: '2026-10-05', fuel: { liters: 20, odometer: null, fullTank: true } }),
         makeTx({ categoryId: 'renta-auto', amount: 1000, date: '2026-10-05' }),
         makeTx({ categoryId: 'comida', amount: 150, date: '2026-10-05' }),

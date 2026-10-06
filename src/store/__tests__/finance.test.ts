@@ -36,7 +36,7 @@ describe('movimientos', () => {
     const id = expense({
       amount: 99.999,
       note: '   tacos   ',
-      shift: { platform: 'Uber', hours: 3, trips: 2 }, // un gasto de comida no es una jornada
+      shift: { platforms: [{ platform: 'Uber', amount: 100, trips: 2 }], hours: 3 }, // un gasto de comida no es una jornada
       fuel: { liters: 20, odometer: 100, fullTank: true },
     });
     expect(store().transactions.find((t) => t.id === id)).toMatchObject({ amount: 100, note: 'tacos', shift: null, fuel: null });
@@ -48,13 +48,28 @@ describe('movimientos', () => {
     expect(store().transactions.filter((t) => [a, b].includes(t.id)).map((t) => t.categoryId)).toEqual(['otros-gastos', 'otros-gastos']);
   });
 
-  it('una jornada guarda plataforma, horas y viajes redondeados', () => {
+  it('una jornada guarda cada plataforma, las horas una vez y viajes redondeados', () => {
     store().setProfiles(['driver']);
     const id = store().addTransaction({
-      kind: 'income', amount: 1450, categoryId: 'viajes', date: '2026-10-06', note: '',
-      shift: { platform: '  DiDi ', hours: 30, trips: 17.6 }, fuel: null,
+      kind: 'income', amount: 1, categoryId: 'viajes', date: '2026-10-06', note: '',
+      shift: {
+        platforms: [
+          { platform: '  DiDi ', amount: 600, trips: 7.6 },
+          { platform: 'Uber', amount: 1200.5, trips: null },
+          { platform: 'didi', amount: 50, trips: 1 }, // repetida
+          { platform: 'inDrive', amount: 0, trips: 3 }, // sin importe
+        ],
+        hours: 30,
+      },
+      fuel: null,
     });
-    expect(store().transactions.find((t) => t.id === id)?.shift).toEqual({ platform: 'DiDi', hours: 24, trips: 18 });
+    const t = store().transactions.find((x) => x.id === id)!;
+    expect(t.shift).toEqual({
+      platforms: [{ platform: 'DiDi', amount: 600, trips: 8 }, { platform: 'Uber', amount: 1200.5, trips: null }],
+      hours: 24,
+    });
+    // El importe es la suma de las plataformas, no lo que venga escrito aparte.
+    expect(t.amount).toBe(1800.5);
   });
 
   it('una carga de gasolina sin litros ni kilometraje sigue siendo válida', () => {

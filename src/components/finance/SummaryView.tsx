@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconBadge, ProgressBar } from '@/components/finance/ui';
 import { Card } from '@/components/ui';
 import {
-  budgetLevel, BudgetLevel, driverStats, FinanceCategory, FinancePeriod, fuelEfficiency, fuelStats, FUEL_CATEGORY, Range,
+  budgetLevel, BudgetLevel, driverStats, FinanceCategory, FinancePeriod, formatHours, fuelEfficiency, fuelStats, FUEL_CATEGORY, Range,
   totalsByCategory,
 } from '@/lib/finance';
 import { CurrencyCode, formatMoney, formatNumber } from '@/lib/money';
@@ -96,7 +96,7 @@ export function SummaryView({ range, period, onBudget }: Props) {
                     <Text style={[styles.rowTitle, { color: theme.text }]}>{p.platform}</Text>
                     <Text style={[styles.small, { color: theme.muted }]}>
                       {[
-                        p.hours ? `${formatNumber(p.hours, currency)} h` : null,
+                        p.hours ? formatHours(p.hours) : null,
                         p.trips ? `${p.trips} ${p.trips === 1 ? 'viaje' : 'viajes'}` : null,
                         p.perHour != null ? `${formatMoney(p.perHour, currency)}/h` : null,
                         p.perTrip != null ? `${formatMoney(p.perTrip, currency)}/viaje` : null,
@@ -163,14 +163,19 @@ export function SummaryView({ range, period, onBudget }: Props) {
           )}
           {efficiency ? (
             <View style={styles.stats}>
-              <Stat label="Rendimiento" value={`${formatNumber(efficiency.kmPerLiter, currency, 1)} km/l`} />
+              <Stat
+                label={efficiency.estimated ? 'Rendimiento aprox.' : 'Rendimiento'}
+                value={`${efficiency.estimated ? '≈ ' : ''}${formatNumber(efficiency.kmPerLiter, currency, 1)} km/l`}
+              />
               <Stat label="Costo por km" value={formatMoney(efficiency.costPerKm, currency)} />
             </View>
           ) : null}
           <Text style={[styles.hint, { color: theme.muted }]}>
             {efficiency
-              ? `Calculado con ${formatNumber(efficiency.km, currency, 0)} km de tus últimas cargas con tanque lleno.`
-              : 'Para calcular el rendimiento, apunta el kilometraje en dos cargas seguidas con tanque lleno.'}
+              ? efficiency.estimated
+                ? `Aproximado con tus últimas ${efficiency.intervals + 1} cargas (${formatNumber(efficiency.km, currency, 0)} km). Con dos cargas de tanque lleno seguidas sale exacto.`
+                : `Calculado con ${formatNumber(efficiency.km, currency, 0)} km de tus últimas cargas con tanque lleno.`
+              : 'Apunta el kilometraje al cargar: con tres cargas (o dos seguidas con tanque lleno) se calcula el rendimiento.'}
           </Text>
         </Card>
       )}

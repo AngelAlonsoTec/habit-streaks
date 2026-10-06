@@ -33,10 +33,11 @@
 - **Perfiles**: trabajador, estudiante o conductor de app (se pueden combinar); cada uno trae sus categorías.
 - **Movimientos**: ingresos y gastos por categoría, con fecha, nota y categorías propias. Los importes se escriben como se quiera (`$1,250.50`, `1.250,50`…) y se muestran en la moneda elegida (peso mexicano por defecto).
 - **Balance por semana o por mes**, con comparación con el periodo anterior, gastos e ingresos por categoría y lista de movimientos por día.
-- **Conductor de app**: jornadas por plataforma (Uber, DiDi, inDrive o las que añadas) con horas y viajes; ganancia bruta y neta por hora y por viaje, descontando los gastos del auto.
-- **Gasolina**: cada carga guarda litros y kilometraje; calcula el precio por litro, el rendimiento (km/l, por el método del tanque lleno) y el costo por km, y avisa si el kilometraje parece mal escrito.
+- **Conductor de app**: una jornada puede tener varias plataformas a la vez (Uber, DiDi, inDrive o las que añadas), con lo que dejó cada una, sus viajes y las horas totales contadas una sola vez; ganancia bruta y neta por hora y por viaje, descontando los gastos del auto.
+- **Gasolina**: cada carga guarda litros y kilometraje; calcula el precio por litro, el rendimiento (km/l: exacto entre dos cargas de tanque lleno, o aproximado si siempre cargas una cantidad fija) y el costo por km, y avisa si el kilometraje parece mal escrito.
+- **Se escribe como se habla**: horas como `8:30` u `8h`, `45,230 km`, `30 lts`, `17 viajes`; si algo no se entiende, avisa en vez de ignorarlo. Las categorías más usadas salen primero.
 - **Presupuestos mensuales** por categoría: avisan desde el 80 % (incluso antes de guardar un gasto) y sugieren tu promedio de los meses anteriores.
-- **Pagos y cobros fijos** (renta, suscripciones, sueldo quincenal, mesada…): semanales, quincenales (15 y fin de mes) o mensuales; se apuntan solos el día que tocan, aunque la app lleve tiempo sin abrirse.
+- **Pagos y cobros fijos** (renta, suscripciones, sueldo quincenal, mesada, luz, beca…): semanales, quincenales (15 y fin de mes), mensuales o bimestrales; se apuntan solos el día que tocan, aunque la app lleve tiempo sin abrirse.
 - **Metas de ahorro** con fecha opcional: cuánto apartar al mes o a la semana para llegar a tiempo, abonos y retiros.
 
 ## Tecnologías
@@ -141,7 +142,7 @@ Los comandos de la app son los mismos en todos los sistemas; lo que cambia es c�
 | `npm start` | Arranca el servidor de desarrollo de Expo |
 | `npm run android` / `npm run ios` / `npm run web` | Arranca y abre directamente en el emulador de Android, el simulador de iOS (solo macOS) o el navegador |
 | `npm test` | Ejecuta las pruebas (Jest) |
-| `npm run test:tz` | Ejecuta las pruebas en varias zonas horarias (México, Los Ángeles, Madrid, Tokio y Auckland) |
+| `npm run test:tz` | Ejecuta las pruebas en varias zonas horarias (México, Los Ángeles, Madrid, Tokio y Auckland), incluida la simulación del día a día de Finanzas (`src/__tests__/finance-daily.test.tsx`) |
 | `npm run typecheck` | Comprueba los tipos de TypeScript |
 | `npm run lint` | Pasa ESLint |
 | `npm run icons` | Regenera todos los iconos de `assets/` desde el SVG de `scripts/generate-icons.js` |
@@ -173,7 +174,7 @@ src/
 ├── store/          Estado global y persistencia (Zustand + AsyncStorage)
 ├── theme/          Colores, modo claro/oscuro, iconos y paleta de hábitos
 └── testing/        Datos de ejemplo para las pruebas
-plugins/            Config plugin de Expo (icono oscuro de Android)
+plugins/            Config plugins de Expo (icono oscuro de Android, tamaño de AsyncStorage)
 scripts/            Generador de iconos
 assets/             Iconos, pantalla de carga y favicon
 ```

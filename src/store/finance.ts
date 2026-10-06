@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { randomUUID } from 'expo-crypto';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -7,10 +6,11 @@ import { DateKey, todayKey } from '@/lib/dates';
 import {
   CUSTOM_CATEGORY_COLOR, DEFAULT_PLATFORMS, dueDates, FinanceCategory, FUEL_CATEGORY, GoalInput, isCustomCategory,
   MAX_CATEGORY_LENGTH, MAX_GOAL_NAME_LENGTH, MAX_HOURS, MAX_LITERS, MAX_NOTE_LENGTH, MAX_ODOMETER, MAX_PLATFORM_LENGTH,
-  MAX_TRIPS, mergeCategories, OTHER_CATEGORY, Profile, Recurring, RecurringInput, savedAmount, SavingsGoal, SHIFT_CATEGORY,
+  MAX_TRIPS, mergeCategories, OTHER_CATEGORY, PlatformEarning, Profile, Recurring, RecurringInput, savedAmount, SavingsGoal, SHIFT_CATEGORY,
   Transaction, TransactionInput, TxKind,
 } from '@/lib/finance';
 import { CurrencyCode, DEFAULT_CURRENCY, MAX_MONEY, roundMoney } from '@/lib/money';
+import { chunkedStorage } from '@/lib/storage';
 
 type FinanceData = {
   /** Perfiles elegidos (vacío = aún no se configuró Finanzas). */
@@ -42,9 +42,9 @@ type FinanceState = FinanceData & {
   removePlatform: (name: string) => void;
   /** Presupuesto mensual; null lo quita. */
   setBudget: (categoryId: string, amount: number | null) => void;
-  /** Crea un fijo que empieza a contar `today`. */
-  addRecurring: (input: RecurringInput, today: DateKey) => string | null;
-  updateRecurring: (id: string, input: Partial<RecurringInput>) => void;
+  /** Crea un fijo que cuenta desde `startDate` (hoy, salvo un bimestral que empieza el mes que viene). */
+  addRecurring: (input: RecurringInput, today: DateKey, startDate?: DateKey) => string | null;
+  updateRecurring: (id: string, input: Partial<RecurringInput & { startDate: DateKey }>) => void;
   /** Lo ya registrado se queda; solo deja de registrarse. */
   deleteRecurring: (id: string) => void;
   /** Registra lo que tocaba de los fijos hasta `today`. Devuelve cuántos movimientos creó. */
@@ -79,13 +79,14 @@ const optional = (n: number | null | undefined, max: number, integer = false) =>
 function normalize(input: TransactionInput, categories: FinanceCategory[]): TransactionInput {
   const category = categories.find((c) => c.id === input.categoryId && c.kind === input.kind);
   const categoryId = category?.id ?? OTHER_CATEGORY[input.kind];
-  const shift = input.kind === 'income' && categoryId === SHIFT_CATEGORY && input.shift?.platform.trim()
-    ? {
-        platform: input.shift.platform.trim().slice(0, MAX_PLATFORM_LENGTH),
-        hours: optional(input.shift.hours, MAX_HOURS),
-        trips: optional(input.shift.trips, MAX_TRIPS, true),
-      }
-    : null;
+  // Una jornada: cada plataforma con lo suyo (sin repetir y sin importes vacíos) y las horas una vez.
+  const platforms: PlatformEarning[] = [];
+  for (const p of input.kind === 'income' && categoryId === SHIFT_CATEGORY ? input.shift?.platforms ?? [] : []) {
+    const platform = p.platform.trim().slice(0, MAX_PLATFORM_LENGTH);
+    if (!platform || !(p.amount > 0) || platforms.some((x) => x.platform.toLowerCase() === platform.toLowerCase())) continue;
+    platforms.push({ platform, amount: clampMoney(p.amount), trips: optional(p.trips, MAX_TRIPS, true) });
+  }
+  const shift = platforms.length ? { platforms, hours: optional(input.shift?.hours, MAX_HOURS) } : null;
   const fuel = input.kind === 'expense' && categoryId === FUEL_CATEGORY
     ? {
         liters: optional(input.fuel?.liters, MAX_LITERS),
@@ -95,7 +96,8 @@ function normalize(input: TransactionInput, categories: FinanceCategory[]): Tran
     : null;
   return {
     kind: input.kind,
-    amount: clampMoney(input.amount),
+    // El importe de una jornada es la suma de sus plataformas.
+    amount: shift ? clampMoney(platforms.reduce((s, p) => s + p.amount, 0)) : clampMoney(input.amount),
     categoryId,
     date: input.date,
     note: input.note.trim().slice(0, MAX_NOTE_LENGTH),
@@ -205,12 +207,12 @@ export const useFinance = create<FinanceState>()(
           return { budgets: amount != null && amount > 0 ? { ...rest, [categoryId]: clampMoney(amount) } : rest };
         }),
 
-      addRecurring: (input, today) => {
+      addRecurring: (input, today, startDate = today) => {
         if (!input.name.trim() || !(input.amount > 0)) return null;
         const r: Recurring = {
           ...normalizeRecurring(input, get().categories),
           id: randomUUID(),
-          startDate: today,
+          startDate: startDate > today ? startDate : today,
           lastApplied: null,
           createdAt: new Date().toISOString(),
         };
@@ -224,7 +226,7 @@ export const useFinance = create<FinanceState>()(
             if (r.id !== id) return r;
             const next = normalizeRecurring({ ...r, ...input }, s.categories);
             // Un nombre vacío no deja el fijo sin nombre: se conserva el anterior.
-            return { ...r, ...next, name: next.name || r.name };
+            return { ...r, ...next, name: next.name || r.name, startDate: input.startDate ?? r.startDate };
           }),
         })),
 
@@ -300,7 +302,8 @@ export const useFinance = create<FinanceState>()(
     {
       name: 'finance-store',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      // En trozos: años de movimientos superan lo que Android lee de una sola entrada.
+      storage: createJSONStorage(() => chunkedStorage()),
       partialize: ({ profiles, currency, categories, platforms, transactions, recurring, budgets, goals }) => ({
         profiles, currency, categories, platforms, transactions, recurring, budgets, goals,
       }),

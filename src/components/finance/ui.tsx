@@ -81,13 +81,13 @@ export function AmountInput({ currency, large, ...props }: AmountInputProps) {
 }
 
 /** Campo numérico corto con su unidad detrás (litros, km, horas). */
-export function NumberField({ unit, integer, ...props }: Omit<TextInputProps, 'style' | 'keyboardType'> & { unit: string; integer?: boolean }) {
+export function NumberField({ unit, integer, keyboardType, ...props }: Omit<TextInputProps, 'style'> & { unit: string; integer?: boolean }) {
   const theme = useTheme();
   return (
     <View style={[styles.amountRow, styles.numberRow, { backgroundColor: theme.surface }]}>
       <TextInput
         placeholderTextColor={theme.muted}
-        keyboardType={integer ? 'number-pad' : 'decimal-pad'}
+        keyboardType={keyboardType ?? (integer ? 'number-pad' : 'decimal-pad')}
         returnKeyType="done"
         {...props}
         style={[styles.number, { color: theme.text }]}

@@ -10,7 +10,7 @@ import { Chip, SectionTitle, Segmented } from '@/components/ui';
 import { addDays, DateKey, fromKey, toKey } from '@/lib/dates';
 import {
   budgetLevel, FUEL_CATEGORY, lastOdometer, MAX_CATEGORY_LENGTH, MAX_NOTE_LENGTH, MAX_PLATFORM_LENGTH, monthSpent,
-  SHIFT_CATEGORY, Transaction, TransactionInput, TxKind,
+  parseHours, parseQuantity, SHIFT_CATEGORY, sortByUse, Transaction, TransactionInput, TxKind,
 } from '@/lib/finance';
 import { formatMoney, formatNumber, moneyInputText, parseMoney } from '@/lib/money';
 import { confirmAction, goBack } from '@/lib/platform';
@@ -19,6 +19,9 @@ import { useFinance } from '@/store/finance';
 import { useTheme } from '@/theme';
 
 type Mode = 'shift' | 'fuel';
+
+/** Lo que se escribe de una plataforma en la jornada. */
+type EarningRow = { platform: string; amountText: string; tripsText: string };
 
 export default function EntryScreen() {
   const theme = useTheme();
@@ -40,6 +43,10 @@ export default function EntryScreen() {
 
 const toText = (n: number | null | undefined) => (n == null ? '' : String(n));
 
+/** "litros", "litros y kilometraje", "horas, litros y viajes". */
+const listFields = (fields: string[]) =>
+  fields.length > 1 ? `${fields.slice(0, -1).join(', ')} y ${fields.at(-1)}` : fields[0];
+
 function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; initialKind: TxKind; mode: Mode | null }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -55,8 +62,11 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   const addCategory = useFinance((s) => s.addCategory);
   const addPlatform = useFinance((s) => s.addPlatform);
 
-  // La plataforma de la última jornada: lo normal es repetir.
-  const lastPlatform = [...transactions].reverse().find((t) => t.shift)?.shift?.platform;
+  // Las plataformas de la última jornada: lo normal es repetir.
+  const lastShift = [...transactions].reverse().find((t) => t.shift)?.shift;
+  const initialRows: EarningRow[] = existing?.shift
+    ? existing.shift.platforms.map((p) => ({ platform: p.platform, amountText: moneyInputText(p.amount, currency), tripsText: toText(p.trips) }))
+    : (lastShift?.platforms.map((p) => p.platform) ?? platforms.slice(0, 1)).map((platform) => ({ platform, amountText: '', tripsText: '' }));
 
   const [kind, setKind] = useState<TxKind>(initialKind);
   const [amountText, setAmountText] = useState(existing ? moneyInputText(existing.amount, currency) : '');
@@ -65,26 +75,45 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   );
   const [date, setDate] = useState<DateKey>(existing?.date ?? today);
   const [note, setNote] = useState(existing?.note ?? '');
-  const [platform, setPlatform] = useState(existing?.shift?.platform ?? lastPlatform ?? platforms[0] ?? '');
+  const [rows, setRows] = useState<EarningRow[]>(initialRows);
   const [hoursText, setHoursText] = useState(toText(existing?.shift?.hours));
-  const [tripsText, setTripsText] = useState(toText(existing?.shift?.trips));
   const [litersText, setLitersText] = useState(toText(existing?.fuel?.liters));
   const [odometerText, setOdometerText] = useState(toText(existing?.fuel?.odometer));
   const [fullTank, setFullTank] = useState(existing?.fuel?.fullTank ?? true);
   const [newCategory, setNewCategory] = useState<string | null>(null);
   const [newPlatform, setNewPlatform] = useState<string | null>(null);
 
-  const amount = parseMoney(amountText, currency);
-  const kindCategories = categories.filter((c) => c.kind === kind);
+  // Las más usadas primero: el gasto de todos los días está a un toque.
+  const kindCategories = sortByUse(categories.filter((c) => c.kind === kind), transactions, today);
   const category = kindCategories.find((c) => c.id === categoryId);
   const isShift = kind === 'income' && categoryId === SHIFT_CATEGORY;
   const isFuel = kind === 'expense' && categoryId === FUEL_CATEGORY;
-  const hours = parseMoney(hoursText, currency);
-  const trips = parseMoney(tripsText, currency);
-  const liters = parseMoney(litersText, currency);
-  const odometer = parseMoney(odometerText, currency);
+
+  // Cada campo se lee como lo escribe la gente; si no se entiende, se avisa (nunca se descarta en silencio).
+  const earnings = rows.map((r) => ({
+    platform: r.platform,
+    amount: parseMoney(r.amountText, currency),
+    trips: r.tripsText.trim() ? parseQuantity(r.tripsText, currency, true) : null,
+    badTrips: r.tripsText.trim() !== '' && parseQuantity(r.tripsText, currency, true) == null,
+  }));
+  const shiftTotal = earnings.every((e) => e.amount != null) && earnings.length
+    ? earnings.reduce((s, e) => s + e.amount!, 0)
+    : null;
+  const amount = isShift ? shiftTotal : parseMoney(amountText, currency);
+  const hours = hoursText.trim() ? parseHours(hoursText, currency) : null;
+  const liters = litersText.trim() ? parseQuantity(litersText, currency) : null;
+  const odometer = odometerText.trim() ? parseQuantity(odometerText, currency, true) : null;
+
+  const badFields = [
+    isShift && hoursText.trim() && hours == null ? 'las horas' : null,
+    isShift && earnings.some((e) => e.badTrips) ? 'los viajes' : null,
+    isFuel && litersText.trim() && liters == null ? 'los litros' : null,
+    isFuel && odometerText.trim() && odometer == null ? 'el kilometraje' : null,
+  ].filter((f): f is string => f != null);
+  const missingAmounts = isShift ? earnings.filter((e) => e.amount == null).map((e) => e.platform) : [];
+
   const color = category?.color ?? (kind === 'income' ? theme.primary : theme.danger);
-  const valid = amount != null && category != null && (!isShift || platform.trim().length > 0);
+  const valid = amount != null && category != null && badFields.length === 0 && (!isShift || rows.length > 0);
 
   const title = existing
     ? 'Editar movimiento'
@@ -117,10 +146,12 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
     return parts;
   })();
 
+  const totalTrips = earnings.reduce((s, e) => s + (e.trips ?? 0), 0);
+  const tripsIncome = earnings.reduce((s, e) => s + (e.trips && e.amount ? e.amount : 0), 0);
   const shiftHint = isShift && amount != null
     ? [
         hours != null ? `${formatMoney(amount / hours, currency)} por hora` : null,
-        trips != null && trips >= 1 ? `${formatMoney(amount / Math.round(trips), currency)} por viaje` : null,
+        totalTrips > 0 ? `${formatMoney(tripsIncome / totalTrips, currency)} por viaje` : null,
       ].filter(Boolean).join(' · ')
     : '';
 
@@ -129,15 +160,31 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
     setCategoryId(null);
   };
 
+  const selectCategory = (id: string) => {
+    setCategoryId(id);
+    // Si ya escribió el importe y elige "Viajes", ese importe es el de su plataforma.
+    if (id === SHIFT_CATEGORY && rows.length === 1 && !rows[0].amountText && amountText) {
+      setRows([{ ...rows[0], amountText }]);
+    }
+  };
+
   const createCategory = () => {
     const id = newCategory ? addCategory(newCategory, kind) : null;
-    if (id) setCategoryId(id);
+    if (id) selectCategory(id);
     setNewCategory(null);
   };
 
+  const togglePlatform = (platform: string) =>
+    setRows((rs) => (rs.some((r) => r.platform === platform)
+      ? rs.filter((r) => r.platform !== platform)
+      : [...rs, { platform, amountText: '', tripsText: '' }]));
+
+  const updateRow = (platform: string, patch: Partial<EarningRow>) =>
+    setRows((rs) => rs.map((r) => (r.platform === platform ? { ...r, ...patch } : r)));
+
   const createPlatform = () => {
     const name = newPlatform ? addPlatform(newPlatform) : null;
-    if (name) setPlatform(name);
+    if (name && !rows.some((r) => r.platform === name)) togglePlatform(name);
     setNewPlatform(null);
   };
 
@@ -149,7 +196,9 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
       categoryId: category.id,
       date,
       note,
-      shift: isShift ? { platform, hours, trips } : null,
+      shift: isShift
+        ? { platforms: earnings.map((e) => ({ platform: e.platform, amount: e.amount!, trips: e.trips })), hours }
+        : null,
       fuel: isFuel ? { liters, odometer, fullTank } : null,
     };
     if (existing) updateTransaction(existing.id, input);
@@ -166,6 +215,8 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   };
 
   const yesterday = toKey(addDays(fromKey(today), -1));
+  // Las de la lista y las que tenga la jornada aunque ya se quitaran de la lista.
+  const platformChoices = [...platforms, ...rows.map((r) => r.platform).filter((p) => !platforms.includes(p))];
 
   return (
     <View style={styles.flex}>
@@ -183,16 +234,20 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
           />
         )}
 
-        <AmountInput
-          currency={currency}
-          large
-          value={amountText}
-          onChangeText={setAmountText}
-          autoFocus={!existing}
-          accessibilityLabel="Importe"
-        />
-        {amountText.trim() !== '' && amount == null && (
-          <Text style={[styles.hint, { color: theme.danger }]}>Escribe un importe válido, por ejemplo 250 o 1,250.50.</Text>
+        {!isShift && (
+          <>
+            <AmountInput
+              currency={currency}
+              large
+              value={amountText}
+              onChangeText={setAmountText}
+              autoFocus={!existing}
+              accessibilityLabel="Importe"
+            />
+            {amountText.trim() !== '' && amount == null && (
+              <Text style={[styles.hint, { color: theme.danger }]}>Escribe un importe válido, por ejemplo 250 o 1,250.50.</Text>
+            )}
+          </>
         )}
         {budgetHint && <Text style={[styles.hint, { color: budgetHint.color }]}>{budgetHint.text}</Text>}
 
@@ -201,7 +256,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
             <SectionTitle>Categoría</SectionTitle>
             <View style={styles.wrap}>
               {kindCategories.map((c) => (
-                <Chip key={c.id} label={c.name} icon={c.icon} color={c.color} selected={categoryId === c.id} onPress={() => setCategoryId(c.id)} />
+                <Chip key={c.id} label={c.name} icon={c.icon} color={c.color} selected={categoryId === c.id} onPress={() => selectCategory(c.id)} />
               ))}
               {newCategory == null && <Chip label="Nueva" icon="add" onPress={() => setNewCategory('')} />}
             </View>
@@ -226,10 +281,10 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
 
         {isShift && (
           <>
-            <SectionTitle>Plataforma</SectionTitle>
+            <SectionTitle>¿Con qué apps trabajaste?</SectionTitle>
             <View style={styles.wrap}>
-              {platforms.map((p) => (
-                <Chip key={p} label={p} color={color} selected={platform === p} onPress={() => setPlatform(p)} />
+              {platformChoices.map((p) => (
+                <Chip key={p} label={p} color={color} selected={rows.some((r) => r.platform === p)} onPress={() => togglePlatform(p)} />
               ))}
               {newPlatform == null && <Chip label="Otra" icon="add" onPress={() => setNewPlatform('')} />}
             </View>
@@ -249,11 +304,54 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
                 <TextButton label="Añadir" onPress={createPlatform} />
               </View>
             )}
-            <SectionTitle>Jornada (opcional)</SectionTitle>
-            <View style={styles.fields}>
-              <NumberField unit="horas" value={hoursText} onChangeText={setHoursText} placeholder="0" accessibilityLabel="Horas conectado" />
-              <NumberField unit="viajes" integer value={tripsText} onChangeText={setTripsText} placeholder="0" accessibilityLabel="Viajes" />
-            </View>
+
+            {rows.length > 0 && <SectionTitle>Lo que te dejó cada una</SectionTitle>}
+            {rows.map((r, i) => (
+              <View key={r.platform} style={[styles.earning, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.earningName, { color: theme.text }]}>{r.platform}</Text>
+                <View style={styles.fields}>
+                  <View style={styles.earningAmount}>
+                    <AmountInput
+                      currency={currency}
+                      value={r.amountText}
+                      onChangeText={(t) => updateRow(r.platform, { amountText: t })}
+                      autoFocus={!existing && i === 0}
+                      accessibilityLabel={`Ganancia en ${r.platform}`}
+                    />
+                  </View>
+                  <NumberField
+                    unit="viajes"
+                    integer
+                    value={r.tripsText}
+                    onChangeText={(t) => updateRow(r.platform, { tripsText: t })}
+                    placeholder="0"
+                    accessibilityLabel={`Viajes en ${r.platform}`}
+                  />
+                </View>
+              </View>
+            ))}
+            {rows.length > 1 && amount != null && (
+              <Text style={[styles.total, { color: theme.text }]}>Total de la jornada: {formatMoney(amount, currency)}</Text>
+            )}
+            {missingAmounts.length > 0 && rows.some((r) => r.amountText.trim()) && (
+              <Text style={[styles.hint, { color: theme.muted }]}>Falta lo de {listFields(missingAmounts)}.</Text>
+            )}
+
+            <SectionTitle>Horas conectado (opcional)</SectionTitle>
+            {/* Teclado con ":" para poder escribir 8:30 (el numérico no lo tiene). */}
+            <NumberField
+              unit="horas"
+              keyboardType="numbers-and-punctuation"
+              value={hoursText}
+              onChangeText={setHoursText}
+              placeholder="Ej.: 8:30"
+              accessibilityLabel="Horas conectado"
+            />
+            <Text style={[styles.hint, { color: theme.muted }]}>
+              {rows.length > 1
+                ? 'Las horas totales: si tuviste varias apps abiertas a la vez, cuéntalas una sola vez.'
+                : 'Desde que te conectaste hasta que acabaste.'}
+            </Text>
             {shiftHint ? <Text style={[styles.hint, { color: theme.text }]}>{shiftHint}</Text> : null}
           </>
         )}
@@ -268,7 +366,9 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
             <View style={[styles.switchRow, { backgroundColor: theme.surface }]}>
               <View style={styles.flex}>
                 <Text style={[styles.switchTitle, { color: theme.text }]}>Tanque lleno</Text>
-                <Text style={[styles.switchText, { color: theme.muted }]}>Entre dos cargas llenas se calcula el rendimiento.</Text>
+                <Text style={[styles.switchText, { color: theme.muted }]}>
+                  Si lo llenas, el rendimiento sale exacto; si no, se calcula aproximado con varias cargas.
+                </Text>
               </View>
               <Switch
                 value={fullTank}
@@ -282,6 +382,12 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
               <Text key={h.text} style={[styles.hint, { color: h.warning ? '#D97706' : theme.text }]}>{h.text}</Text>
             ))}
           </>
+        )}
+
+        {badFields.length > 0 && (
+          <Text style={[styles.hint, { color: theme.danger }]}>
+            No entiendo {listFields(badFields)}: escribe solo el número, por ejemplo {isShift ? '8, 8.5 u 8:30 horas y 17 viajes' : '30.5 litros y 45,230 km'}.
+          </Text>
         )}
 
         <SectionTitle>Fecha</SectionTitle>
@@ -325,6 +431,9 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
         {!valid && amount != null && !category && (
           <Text style={[styles.footerHint, { color: theme.muted }]}>Elige una categoría</Text>
         )}
+        {isShift && rows.length === 0 && (
+          <Text style={[styles.footerHint, { color: theme.muted }]}>Elige al menos una app</Text>
+        )}
         <PrimaryButton
           label={
             existing ? 'Guardar cambios'
@@ -351,6 +460,10 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineWidth: 0 } }),
   },
   fields: { flexDirection: 'row', gap: 8 },
+  earning: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 10, gap: 8, marginBottom: 4 },
+  earningName: { fontSize: 15, fontWeight: '800', paddingHorizontal: 4 },
+  earningAmount: { flex: 1.3 },
+  total: { fontSize: 15, fontWeight: '800', marginTop: 2 },
   hint: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginTop: 8 },
   switchTitle: { fontSize: 15, fontWeight: '700' },

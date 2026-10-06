@@ -1,5 +1,5 @@
 import {
-  budgetLevel, categoriesFor, describeFrequency, describeFrequencyShort, describePeriod, driverStats, dueDates, fuelEfficiency,
+  budgetLevel, categoriesFor, formatHours, parseHours, parseQuantity, sortByUse, describeFrequency, describeFrequencyShort, describePeriod, driverStats, dueDates, fuelEfficiency,
   fuelStats, isCustomCategory, lastOdometer, mergeCategories, monthlyEquivalent, monthSpent, nextOccurrence, occursOn,
   periodRange, periodTotals, Recurring, SavingsGoal, savingsPace, totalsByCategory,
 } from '../finance';
@@ -10,7 +10,7 @@ const fill = (date: string, amount: number, liters: number | null, odometer: num
   makeTx({ categoryId: 'gasolina', date, amount, fuel: { liters, odometer, fullTank } });
 
 const shift = (date: string, amount: number, platform: string, hours: number | null, trips: number | null) =>
-  makeTx({ kind: 'income', categoryId: 'viajes', date, amount, shift: { platform, hours, trips } });
+  makeTx({ kind: 'income', categoryId: 'viajes', date, amount, shift: { platforms: [{ platform, amount, trips }], hours } });
 
 const recurring = (r: Partial<Recurring>): Recurring => ({
   id: 'r1', kind: 'expense', name: 'Renta', amount: 5000, categoryId: 'renta', frequency: 'monthly', day: 1,
@@ -147,7 +147,7 @@ describe('gasolina', () => {
 
   it('rendimiento entre cargas llenas', () => {
     const e = fuelEfficiency([fill('2026-10-01', 800, 33, 45230), fill('2026-10-05', 700, 29, 45580)]);
-    expect(e).toEqual({ kmPerLiter: 12.1, costPerKm: 2, km: 350, intervals: 1 });
+    expect(e).toEqual({ kmPerLiter: 12.1, costPerKm: 2, km: 350, intervals: 1, estimated: false });
   });
 
   it('una carga parcial en medio suma sus litros al tramo', () => {
@@ -159,9 +159,19 @@ describe('gasolina', () => {
     expect(e).toMatchObject({ km: 360, kmPerLiter: 12, costPerKm: 1.94 });
   });
 
-  it('una carga sin litros o una llena sin kilometraje cortan la cuenta', () => {
+  it('una carga sin litros corta la cuenta; una llena sin kilometraje se salva con la aproximación', () => {
     expect(fuelEfficiency([fill('2026-10-01', 800, 33, 10000), fill('2026-10-03', 200, null, null, false), fill('2026-10-05', 500, 22, 10360)])).toBeNull();
-    expect(fuelEfficiency([fill('2026-10-01', 800, 33, 10000), fill('2026-10-03', 600, 25, null), fill('2026-10-05', 500, 22, 10360)])).toBeNull();
+    // Lleno a 10000 km y lleno a 10360 km: lo gastado son los 25 + 22 litros de después.
+    expect(fuelEfficiency([fill('2026-10-01', 800, 33, 10000), fill('2026-10-03', 600, 25, null), fill('2026-10-05', 500, 22, 10360)]))
+      .toMatchObject({ kmPerLiter: 7.7, km: 360, estimated: true });
+  });
+
+  it('quien nunca llena el tanque ("póngale 300") tiene un rendimiento aproximado', () => {
+    const txs = [0, 1, 2, 3, 4, 5].map((i) => fill(`2026-10-0${i + 1}`, 300, 12.4, 10000 + i * 140, false));
+    expect(fuelEfficiency(txs)).toEqual({ kmPerLiter: 11.3, costPerKm: 2.14, km: 700, intervals: 5, estimated: true });
+    // Con pocos datos no se inventa nada.
+    expect(fuelEfficiency(txs.slice(0, 2))).toBeNull();
+    expect(fuelEfficiency([fill('2026-10-01', 300, 12, 10000, false), fill('2026-10-02', 300, 12, 10100, false), fill('2026-10-03', 300, 12, 10200, false)])).toBeNull();
   });
 
   it('ignora un kilometraje mal escrito y se queda con los últimos tramos', () => {
@@ -187,7 +197,7 @@ describe('gasolina', () => {
 
 describe('fijos', () => {
   it('el día 31 cae en el último día de los meses cortos (también en bisiesto)', () => {
-    const r = { frequency: 'monthly' as const, day: 31 };
+    const r = { frequency: 'monthly' as const, day: 31, startDate: '2026-01-01' };
     expect(occursOn(r, fromKey('2027-02-28'))).toBe(true);
     expect(occursOn(r, fromKey('2028-02-28'))).toBe(false);
     expect(occursOn(r, fromKey('2028-02-29'))).toBe(true);
@@ -196,7 +206,7 @@ describe('fijos', () => {
   });
 
   it('la quincena es el 15 y el último día', () => {
-    const r = { frequency: 'biweekly' as const, day: 0 };
+    const r = { frequency: 'biweekly' as const, day: 0, startDate: '2026-01-01' };
     expect(['2027-02-14', '2027-02-15', '2027-02-27', '2027-02-28'].map((k) => occursOn(r, fromKey(k)))).toEqual([false, true, false, true]);
   });
 
@@ -257,5 +267,85 @@ describe('metas de ahorro', () => {
     expect(savingsPace(goal({ dueDate: '2026-10-06' }), '2026-10-06')).toMatchObject({ overdue: false, daysLeft: 0 });
     expect(savingsPace(goal({ dueDate: '2026-12-01', deposits: [{ id: 'd', date: '2026-10-01', amount: 13000 }] }), '2026-10-06'))
       .toMatchObject({ remaining: 0, perMonth: null, overdue: false });
+  });
+});
+
+describe('lo que se escribe a mano', () => {
+  it.each([
+    ['8', 8], ['8.5', 8.5], ['8,5', 8.5], ['8:30', 8.5], ['8h', 8], ['8 h', 8], ['8 h 30', 8.5], ['8h30min', 8.5],
+    ['10 horas', 10], ['0:45', 0.75], ['45 min', 0.75], ['8:20', 8.33], ['8.5 h', 8.5],
+  ])('horas: %p son %p', (text, expected) => {
+    expect(parseHours(text, 'MXN')).toBe(expected);
+  });
+
+  it.each(['ocho', '8:75', '0', '', 'h'])('horas: rechaza %p', (text) => {
+    expect(parseHours(text, 'MXN')).toBeNull();
+  });
+
+  it('litros, kilómetros y viajes con su unidad detrás', () => {
+    expect(parseQuantity('30 lts', 'MXN')).toBe(30);
+    expect(parseQuantity('41.5 litros', 'MXN')).toBe(41.5);
+    expect(parseQuantity('45,230 km', 'MXN', true)).toBe(45230);
+    expect(parseQuantity('45230km', 'MXN', true)).toBe(45230);
+    expect(parseQuantity('17 viajes', 'MXN', true)).toBe(17);
+    expect(parseQuantity('45.230 km', 'EUR', true)).toBe(45230);
+    expect(parseQuantity('treinta', 'MXN')).toBeNull();
+  });
+
+  it('horas legibles', () => {
+    expect(formatHours(8)).toBe('8 h');
+    expect(formatHours(8.5)).toBe('8 h 30 min');
+    expect(formatHours(56.5)).toBe('56 h 30 min');
+    expect(formatHours(0.75)).toBe('45 min');
+  });
+});
+
+describe('dos apps a la vez', () => {
+  it('las horas cuentan una vez y por plataforma solo se da lo que se puede saber', () => {
+    const both = makeTx({
+      kind: 'income', categoryId: 'viajes', amount: 1800, date: '2026-10-05',
+      shift: { platforms: [{ platform: 'Uber', amount: 1200, trips: 14 }, { platform: 'DiDi', amount: 600, trips: 7 }], hours: 9 },
+    });
+    const soloDiDi = shift('2026-10-06', 700, 'DiDi', 5, 9);
+    const s = driverStats([both, soloDiDi], { start: '2026-10-05', end: '2026-10-11' });
+    expect(s).toMatchObject({ income: 2500, hours: 14, trips: 30 });
+    expect(s.perHour).toBe(178.57);
+    // Uber solo se usó junto con DiDi: por viaje sí, por hora no.
+    expect(s.platforms.find((p) => p.platform === 'Uber')).toMatchObject({ income: 1200, trips: 14, perTrip: 85.71, perHour: null, hours: 0 });
+    // DiDi también se usó acompañada un día: tampoco por hora.
+    expect(s.platforms.find((p) => p.platform === 'DiDi')).toMatchObject({ income: 1300, trips: 16, perHour: null, shifts: 2 });
+  });
+});
+
+describe('bimestrales', () => {
+  const luz = { frequency: 'bimonthly' as const, day: 18, startDate: '2026-10-01' };
+
+  it('un mes sí y otro no, desde el mes de inicio', () => {
+    expect(['2026-10-18', '2026-11-18', '2026-12-18', '2027-01-18', '2027-02-18'].map((k) => occursOn(luz, fromKey(k))))
+      .toEqual([true, false, true, false, true]);
+    expect(dueDates(recurring({ ...luz, lastApplied: null }), '2027-03-01')).toEqual(['2026-10-18', '2026-12-18', '2027-02-18']);
+    expect(nextOccurrence(luz, '2026-10-19')).toBe('2026-12-18');
+    expect(describeFrequency(luz)).toBe('Cada dos meses, el día 18');
+    expect(describeFrequencyShort(luz)).toBe('El 18, cada 2 meses');
+    expect(monthlyEquivalent({ frequency: 'bimonthly', amount: 680 })).toBe(340);
+  });
+
+  it('el día 31 en meses cortos cae en el último día', () => {
+    expect(occursOn({ frequency: 'bimonthly', day: 31, startDate: '2026-12-01' }, fromKey('2027-02-28'))).toBe(true);
+  });
+});
+
+describe('categorías por uso', () => {
+  it('las más usadas en los últimos 90 días van primero', () => {
+    const cats = categoriesFor(['worker']).filter((c) => c.kind === 'expense');
+    const txs = [
+      ...[1, 2, 3].map((d) => makeTx({ categoryId: 'transporte', date: `2026-10-0${d}` })),
+      ...[1, 2].map((d) => makeTx({ categoryId: 'comida', date: `2026-10-0${d}` })),
+      ...[1, 2, 3, 4, 5].map((d) => makeTx({ categoryId: 'ropa', date: `2026-0${d}-01` })), // hace más de 90 días
+    ];
+    const sorted = sortByUse(cats, txs, '2026-10-06').map((c) => c.id);
+    expect(sorted.slice(0, 2)).toEqual(['transporte', 'comida']);
+    // El resto, en su orden de siempre.
+    expect(sorted.slice(2)).toEqual(cats.map((c) => c.id).filter((id) => id !== 'transporte' && id !== 'comida'));
   });
 });

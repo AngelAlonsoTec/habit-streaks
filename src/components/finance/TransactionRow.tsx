@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconBadge } from '@/components/finance/ui';
-import { FinanceCategory, Transaction } from '@/lib/finance';
+import { FinanceCategory, formatHours, shiftTrips, Transaction } from '@/lib/finance';
 import { CurrencyCode, formatMoney, formatNumber } from '@/lib/money';
 import { useTheme } from '@/theme';
 
@@ -13,9 +13,10 @@ export function transactionDetails(t: Transaction, category: FinanceCategory, cu
   const parts: string[] = [];
   if (t.note) parts.push(category.name);
   if (t.shift) {
-    parts.push(t.shift.platform);
-    if (t.shift.hours) parts.push(`${formatNumber(t.shift.hours, currency)} h`);
-    if (t.shift.trips) parts.push(`${t.shift.trips} ${t.shift.trips === 1 ? 'viaje' : 'viajes'}`);
+    parts.push(t.shift.platforms.map((p) => p.platform).join(' + '));
+    if (t.shift.hours) parts.push(formatHours(t.shift.hours));
+    const trips = shiftTrips(t.shift);
+    if (trips) parts.push(`${trips} ${trips === 1 ? 'viaje' : 'viajes'}`);
   }
   if (t.fuel) {
     if (t.fuel.liters) parts.push(`${formatNumber(t.fuel.liters, currency)} l`);
