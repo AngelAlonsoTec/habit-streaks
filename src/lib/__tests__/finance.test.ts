@@ -532,6 +532,8 @@ describe('lo que viene', () => {
     // Día a día: 300 en los 7 días desde que empezó a apuntar = 42.86 al día, por 25 días.
     expect(o).toMatchObject({ balance: -4800, incoming: 12000, outgoing: 1219, dailySpend: 42.86, daysLeft: 25, debt: 3000, debtEnds: '2026-12-15' });
     expect(o.projected).toBe(4909.5); // −4800 + 12000 − 1219 − 1071.50
+    // Pero lleva 6 días apuntando: aún no es para fiarse del día a día.
+    expect(o).toMatchObject({ recordedDays: 6, ready: false });
     expect(o.committed).toBe(5719);
     // Mes a mes: la mensualidad del celular se acaba en diciembre.
     expect(o.months.slice(0, 4).map((m) => [m.key, m.fixed, m.debts])).toEqual([
@@ -544,6 +546,35 @@ describe('lo que viene', () => {
     const o = outlook({ cash: [], transactions: [], recurring: [loan], goals: [], pending: [], today: '2026-10-06' });
     expect(o.months.slice(0, 4).map((m) => m.debts)).toEqual([1000, 1000, 500, 0]);
     expect(o).toMatchObject({ debt: 2500, outgoing: 1000 });
+  });
+
+  it('un solo gasto el primer día no se toma como el gasto de cada día', () => {
+    // Llena el tanque (650) el día que empieza a usar la app: 650 / 7 = 92.86 al día por 24 días daría −2,879.
+    const gas = [makeTx({ amount: 650, categoryId: 'gasolina', date: '2026-10-07' })];
+    const o = outlook({ cash: gas, transactions: gas, recurring: [], goals: [], pending: [], today: '2026-10-07' });
+    expect(o).toMatchObject({ balance: -650, recordedDays: 1, ready: false });
+    // Una semana después ya se puede calcular.
+    expect(outlook({ cash: gas, transactions: gas, recurring: [], goals: [], pending: [], today: '2026-10-13' })).toMatchObject({ recordedDays: 7, ready: true });
+  });
+
+  it('lo que se gana suelto también cuenta, y lo de cada app solo si llega antes de fin de mes', () => {
+    // Una semana de jornadas (lunes 5 a domingo 11): Uber 7,000 (paga los lunes), inDrive 700 (efectivo).
+    const week = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'].map((date) => makeTx({
+      kind: 'income', categoryId: 'viajes', date, amount: 1100,
+      shift: { hours: 9, platforms: [{ platform: 'Uber', amount: 1000, trips: 12 }, { platform: 'inDrive', amount: 100, trips: 2 }] },
+    }));
+    const gas = [makeTx({ amount: 1400, categoryId: 'gasolina', date: '2026-10-05' })];
+    const all = [...week, ...gas];
+    const payouts = { Uber: 0 };
+    const today = '2026-10-11';
+    const o = outlook({ cash: cashFlow(all, payouts, today), transactions: all, recurring: [], goals: [], pending: pendingShifts(all, payouts, today), today, payouts });
+    expect(o).toMatchObject({ recordedDays: 7, ready: true, dailyIncome: 1100, dailySpend: 200, daysLeft: 20 });
+    // Faltan 20 días (12 al 31). inDrive llega al momento: 100 × 20. Lo de Uber del 12 al 25 llega a más
+    // tardar el lunes 26 (1,000 × 14); lo del 26 al 31 llega el 2 de noviembre.
+    expect(o.expectedIncome).toBe(16000);
+    // Hoy: 700 de inDrive − 1,400 = −700; por cobrar el lunes 12, 7,000; menos 200 al día × 20.
+    expect(o.incoming).toBe(7000);
+    expect(o.projected).toBe(18300); // −700 + 7,000 + 16,000 − 4,000
   });
 
   it('qué parte de lo que entra se llevan los fijos: el promedio de los meses anteriores', () => {

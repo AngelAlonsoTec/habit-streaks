@@ -88,8 +88,8 @@ function FinanceHome() {
   const trend = useMemo(() => balanceSeries(cash, goals, range, today), [cash, goals, range, today]);
   // Cómo cierra el mes si todo sigue igual: con los fijos, deudas y abonos que faltan y el gasto del día a día.
   const ahead = useMemo(
-    () => outlook({ cash, transactions, recurring, goals, pending, today }),
-    [cash, transactions, recurring, goals, pending, today],
+    () => outlook({ cash, transactions, recurring, goals, pending, today, payouts }),
+    [cash, transactions, recurring, goals, pending, today, payouts],
   );
   const slots = useMemo(() => rangeDays(range).length, [range]);
 
@@ -190,14 +190,22 @@ function FinanceHome() {
             {totals.saved !== 0 && <Total icon="wallet" label="Ahorro" value={formatMoney(totals.saved, currency)} />}
           </View>
           {comparison && <Text style={[styles.comparison, { color: ON_GRADIENT.muted }]}>{comparison}</Text>}
-          {offset === 0 && (transactions.length > 0 || recurring.length > 0) && (
+          {offset === 0 && (transactions.length > 0 || recurring.length > 0) && (ahead.ready ? (
             <View style={styles.projection} accessible accessibilityLabel={`Proyección al cierre del mes: ${formatMoneyRounded(ahead.projected, currency)}`}>
               <Ionicons name={ahead.projected < totals.balance ? 'trending-down' : 'trending-up'} size={15} color={ON_GRADIENT.text} />
               <Text style={[styles.projectionText, { color: ON_GRADIENT.text }]}>
                 Si todo sigue igual, cierras el mes con unos {formatMoneyRounded(ahead.projected, currency)}
               </Text>
             </View>
-          )}
+          ) : (
+            // Con un par de días apuntados, el promedio diario engaña (un tanque lleno parecería el gasto de cada día).
+            <View style={styles.projection}>
+              <Ionicons name="time-outline" size={15} color={ON_GRADIENT.muted} />
+              <Text style={[styles.projectionText, { color: ON_GRADIENT.muted }]}>
+                Con unos días más de movimientos te digo cómo cierras el mes.
+              </Text>
+            </View>
+          ))}
         </GradientCard>
 
         <View style={styles.actions}>

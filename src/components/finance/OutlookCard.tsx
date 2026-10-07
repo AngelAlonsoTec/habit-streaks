@@ -6,7 +6,7 @@ import { StackedBars } from '@/components/charts/StackedBars';
 import { creditColor } from '@/components/finance/CreditSheets';
 import { Card } from '@/components/ui';
 import { DateKey, formatShortDate, fromKey } from '@/lib/dates';
-import { isEnded, Outlook, planProgress, Recurring } from '@/lib/finance';
+import { isEnded, MIN_DAYS_TO_PROJECT, Outlook, planProgress, Recurring } from '@/lib/finance';
 import { CurrencyCode, formatMoney, formatMoneyRounded } from '@/lib/money';
 import { CHART_LIGHT, chartColor, useTheme } from '@/theme';
 
@@ -57,21 +57,36 @@ export function OutlookCard({ outlook: o, recurring, today, currency, format, fo
         </View>
         <View style={styles.flex}>
           <Text style={[styles.title, { color: theme.text }]}>Lo que viene</Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>Con tus fijos, deudas y lo que gastas al día</Text>
+          <Text style={[styles.subtitle, { color: theme.muted }]}>Con tus fijos, deudas y lo que sueles ganar y gastar</Text>
         </View>
       </View>
 
-      <View style={[styles.projection, { backgroundColor: theme.surface }]} accessible accessibilityLabel={`Así cierras ${thisMonth}: ${money(o.projected)}`}>
-        <Text style={[styles.small, { color: theme.muted }]}>Si todo sigue igual, cierras {thisMonth} con</Text>
-        <Text style={[styles.projected, { color: o.projected < 0 ? theme.danger : theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
-          {money(o.projected)}
-        </Text>
-      </View>
+      {o.ready ? (
+        <View style={[styles.projection, { backgroundColor: theme.surface }]} accessible accessibilityLabel={`Así cierras ${thisMonth}: ${money(o.projected)}`}>
+          <Text style={[styles.small, { color: theme.muted }]}>Si todo sigue igual, cierras {thisMonth} con</Text>
+          <Text style={[styles.projected, { color: o.projected < 0 ? theme.danger : theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
+            {money(o.projected)}
+          </Text>
+        </View>
+      ) : (
+        // Con pocos días, el promedio diario engaña: mejor no adivinar.
+        <View style={[styles.projection, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.text, { color: theme.text }]}>
+            Con unos días más de movimientos te digo cómo cierras {thisMonth}.
+          </Text>
+          <Text style={[styles.small, { color: theme.muted }]}>
+            Llevas {o.recordedDays} de {MIN_DAYS_TO_PROJECT} días apuntados.
+          </Text>
+        </View>
+      )}
       <View style={styles.lines}>
         <Row label="Balance de hoy" value={money(o.balance)} />
         {o.incoming > 0 && <Row label="Lo que aún te entra" value={`+${money(o.incoming)}`} color={theme.primary} />}
         {o.outgoing > 0 && <Row label="Fijos, mensualidades y abonos" value={money(-o.outgoing)} />}
-        {o.dailySpend > 0 && o.daysLeft > 0 && (
+        {o.ready && o.expectedIncome > 0 && (
+          <Row label={`Lo que sueles ganar (unos ${formatMoneyRounded(o.dailyIncome, currency)} al día)`} value={`+${money(o.expectedIncome)}`} color={theme.primary} />
+        )}
+        {o.ready && o.dailySpend > 0 && o.daysLeft > 0 && (
           <Row label={`Día a día (unos ${formatMoneyRounded(o.dailySpend, currency)} × ${o.daysLeft} ${o.daysLeft === 1 ? 'día' : 'días'})`} value={money(-o.dailySpend * o.daysLeft)} />
         )}
       </View>

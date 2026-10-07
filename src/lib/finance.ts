@@ -1052,8 +1052,15 @@ export type Outlook = {
   /** Lo que se suele gastar al día fuera de los fijos, y los días que faltan del mes. */
   dailySpend: number;
   daysLeft: number;
+  /** Lo que se suele ganar al día fuera de los fijos (jornadas, ventas)… */
+  dailyIncome: number;
+  /** …y lo que de eso llegaría antes de que acabe el mes (lo de Uber del día 30 llega el mes que viene). */
+  expectedIncome: number;
   /** Cómo cierra el mes si todo sigue igual. */
   projected: number;
+  /** Días desde el primer movimiento apuntado; con menos de MIN_DAYS_TO_PROJECT, el día a día aún no dice mucho. */
+  recordedDays: number;
+  ready: boolean;
   /** Lo que se debe (planes, compras a meses y abonos con total) y cuándo termina lo que tiene fecha. */
   debt: number;
   debtEnds: DateKey | null;
@@ -1078,6 +1085,9 @@ function chargesIn(r: Recurring, dates: DateKey[], suggested: number | null, cap
   return Math.min((suggested ?? 0) * dates.length, cap ?? Infinity);
 }
 
+/** Días apuntados que hacen falta para calcular el día a día (con uno solo, un tanque lleno parecería el gasto de cada día). */
+export const MIN_DAYS_TO_PROJECT = 7;
+
 /**
  * El panorama del mes y de los que vienen: cómo cierra el mes si todo sigue igual (lo que ya hay, lo
  * que falta por entrar y salir, y lo que se gasta al día), lo que se debe y cuánto piden los fijos y
@@ -1090,8 +1100,10 @@ export function outlook(input: {
   goals: SavingsGoal[];
   pending: PendingShift[];
   today: DateKey;
+  /** Qué día paga cada app: lo que se gane al final del mes puede llegar el siguiente. */
+  payouts?: Payouts;
 }): Outlook {
-  const { cash, transactions, recurring, goals, pending, today } = input;
+  const { cash, transactions, recurring, goals, pending, today, payouts = DEFAULT_PAYOUTS } = input;
   const month = periodRange('month', 0, today);
   const rest = rangeDays({ start: toKey(addDays(fromKey(today), 1)), end: month.end }).filter((d) => d <= month.end);
   const active = recurring.filter((r) => !isEnded(r, today));
@@ -1109,15 +1121,29 @@ export function outlook(input: {
     return s + chargesIn(r, dates, state?.suggested ?? null, state?.owed ?? null);
   }, 0);
 
-  // Gasto del día a día: lo que no es fijo, en los últimos 30 días (o desde que se empezó a apuntar).
+  // El día a día: lo que no es fijo, en los últimos 30 días (o desde que se empezó a apuntar).
   const since = toKey(addDays(fromKey(today), -29));
-  const daily = transactions.filter((t) => t.kind === 'expense' && !t.recurringId && t.date >= since && t.date <= today);
+  const loose = transactions.filter((t) => !t.recurringId && t.date >= since && t.date <= today);
   const first = transactions.reduce<DateKey | null>((min, t) => (min == null || t.date < min ? t.date : min), null);
-  const span = first ? Math.min(30, Math.max(7, daysBetween(fromKey(first), fromKey(today)) + 1)) : 30;
-  const dailySpend = roundMoney(daily.reduce((s, t) => s + t.amount, 0) / span);
+  const recordedDays = first && first <= today ? daysBetween(fromKey(first), fromKey(today)) + 1 : 0;
+  const span = recordedDays ? Math.min(30, Math.max(MIN_DAYS_TO_PROJECT, recordedDays)) : 30;
+  const dailySpend = roundMoney(loose.filter((t) => t.kind === 'expense').reduce((s, t) => s + t.amount, 0) / span);
+
+  // Lo que entra suelto: las jornadas por app (cada una paga en su día) y lo demás (ventas, propinas) al momento.
+  const byPlatform = new Map<string, number>();
+  let otherIncome = 0;
+  for (const t of loose) {
+    if (t.kind !== 'income') continue;
+    if (t.shift) for (const p of t.shift.platforms) byPlatform.set(p.platform, (byPlatform.get(p.platform) ?? 0) + p.amount);
+    else otherIncome += t.amount;
+  }
+  const dailyIncome = roundMoney([...byPlatform.values()].reduce((s, n) => s + n, otherIncome) / span);
+  // Lo que se gane cada día que falta cuenta si su pago llega antes de que acabe el mes.
+  const expectedIncome = roundMoney(rest.reduce((s, d) => s + otherIncome / span
+    + [...byPlatform].reduce((sp, [platform, amount]) => sp + (payoutDate(d, payouts[platform]) <= month.end ? amount / span : 0), 0), 0));
 
   const balance = periodTotals(cash, goals, month).balance;
-  const projected = roundMoney(balance + incoming - outgoing - dailySpend * rest.length);
+  const projected = roundMoney(balance + incoming + expectedIncome - outgoing - dailySpend * rest.length);
 
   const debtOf = (r: Recurring) => planProgress(r, today)?.owed ?? abonos.get(r.id)?.owed ?? 0;
   const isDebt = (r: Recurring) => r.count != null || r.creditId != null || (r.variable === true && r.total != null);
@@ -1159,7 +1185,11 @@ export function outlook(input: {
     outgoing: roundMoney(outgoing),
     dailySpend,
     daysLeft: rest.length,
+    dailyIncome,
+    expectedIncome,
     projected,
+    recordedDays,
+    ready: recordedDays >= MIN_DAYS_TO_PROJECT,
     debt: roundMoney(debts.reduce((s, r) => s + debtOf(r), 0)),
     debtEnds,
     months,

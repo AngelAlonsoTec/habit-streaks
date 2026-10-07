@@ -537,13 +537,30 @@ describe('plazos, créditos y jornadas por cobrar', () => {
         fixed({ id: 'sueldo', name: 'Sueldo', amount: 6000, kind: 'income', categoryId: 'sueldo', frequency: 'biweekly', day: 0 }),
         fixed({ id: 'nf', name: 'Netflix', amount: 219, categoryId: 'suscripciones', day: 20 }),
       ],
-      transactions: [makeTx({ amount: 300, date: '2026-10-01' }), makeTx({ amount: 4500, categoryId: 'renta', date: '2026-10-01', recurringId: 'renta' })],
+      // Apunta desde septiembre (la renta de entonces): ya hay historia para calcular el día a día.
+      transactions: [
+        makeTx({ amount: 4500, categoryId: 'renta', date: '2026-09-01', recurringId: 'renta' }),
+        makeTx({ amount: 300, date: '2026-10-01' }),
+        makeTx({ amount: 4500, categoryId: 'renta', date: '2026-10-01', recurringId: 'renta' }),
+      ],
     });
     renderRouter(APP_DIR, { initialUrl: '/finance' });
-    // −4800 de hoy + 12000 de las quincenas − 219 de Netflix − 42.86 al día × 25 días.
-    expect(await screen.findByLabelText('Así cierras octubre: $5,909.50')).toBeTruthy();
-    expect(screen.getByLabelText('Proyección al cierre del mes: $5,910')).toBeTruthy();
+    // −4800 de hoy + 12000 de las quincenas − 219 de Netflix − (300 en 30 días = 10 al día) × 25 días.
+    expect(await screen.findByLabelText('Así cierras octubre: $6,731')).toBeTruthy();
+    expect(screen.getByLabelText('Proyección al cierre del mes: $6,731')).toBeTruthy();
     expect(screen.getByLabelText('Lo que aún te entra: +$12,000')).toBeTruthy();
+    expect(screen.getByLabelText('Día a día (unos $10 × 25 días): −$250')).toBeTruthy();
+  });
+
+  it('con un solo gasto (el primer día) no adivina cómo cierra el mes', async () => {
+    setup(['driver'], { transactions: [makeTx({ amount: 650, categoryId: 'gasolina', date: '2026-10-06' })] });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    expect(await screen.findByText('Con unos días más de movimientos te digo cómo cierras el mes.')).toBeTruthy();
+    expect(screen.getByText('Llevas 1 de 7 días apuntados.')).toBeTruthy();
+    expect(screen.getByLabelText('Balance de hoy: −$650')).toBeTruthy();
+    expect(screen.queryByLabelText(/^Así cierras/)).toBeNull();
+    expect(screen.queryByLabelText(/^Proyección al cierre/)).toBeNull();
+    expect(screen.queryByLabelText(/^Día a día/)).toBeNull();
   });
 
   it('en el Resumen, las flechas recorren los días', async () => {

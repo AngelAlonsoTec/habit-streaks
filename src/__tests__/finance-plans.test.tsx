@@ -104,6 +104,8 @@ describe('Carlos, conductor: cada app le paga en su día (semana del lunes 5 al 
     expect(await screen.findByLabelText('Balance: −$200')).toBeTruthy();
     expect(screen.getByLabelText('Por cobrar: $1,350')).toBeTruthy();
     expect(screen.getByText('(+$1,350 por cobrar · llega el lunes 12)')).toBeTruthy();
+    // Primer día con la app: aún no adivina cómo cierra el mes.
+    expect(screen.getByText('Con unos días más de movimientos te digo cómo cierras el mes.')).toBeTruthy();
     app.unmount();
 
     // Martes a jueves.
@@ -147,6 +149,14 @@ describe('Carlos, conductor: cada app le paga en su día (semana del lunes 5 al 
     expect(screen.getByText('−$1,350')).toBeTruthy();
     expect(screen.getByText('$8,850')).toBeTruthy();
     expect(screen.getByText('De lo ganado, $7,830 aún no te lo pagan: llega entre el lunes 12 y el martes 13.')).toBeTruthy();
+
+    // Ya lleva una semana: cuenta lo que suele ganar, no solo lo que gasta. En 7 días ganó 10,200
+    // (1,457.14 al día) y gastó 1,850 (264.29 al día). Faltan 20 días: inDrive llega al momento
+    // (950 / 7 × 20); lo de Uber del 12 al 25 llega a más tardar el lunes 26 (8,300 / 7 × 14) y lo
+    // de DiDi del 12 al 26, el martes 27 (950 / 7 × 15). En total 21,350 más.
+    expect(screen.getByLabelText('Lo que sueles ganar (unos $1,457 al día): +$21,350')).toBeTruthy();
+    // 520 de hoy + 7,830 por cobrar + 21,350 − 264.29 × 20.
+    expect(screen.getByLabelText('Así cierras octubre: $24,414.20')).toBeTruthy();
 
     // Con las flechas va de día en día; el día elegido queda marcado aunque no tenga número en el eje.
     const back = () => fireEvent.press(screen.getAllByLabelText('Día anterior')[0]);
@@ -253,6 +263,8 @@ describe('Mariana, de quincena: suscripciones, plazos y un crédito (octubre a f
     fireEvent.press(screen.getByText('Resumen'));
     expect(await screen.findByLabelText('Lo que aún te entra: +$15,000')).toBeTruthy();
     expect(screen.getByLabelText('Fijos, mensualidades y abonos: −$4,199')).toBeTruthy();
+    // Es su primer día apuntando: lo seguro (fijos y deudas) sí; el cierre del mes, en unos días.
+    expect(screen.getByText('Llevas 1 de 7 días apuntados.')).toBeTruthy();
     // Lo que debe: lentes 2,200 + caja 5,000 + celular 6,000.
     expect(screen.getByText(/^Debes \$13,200 entre mensualidades, compras a meses y abonos; lo que tiene fecha lo terminas el 25 sep 2027/)).toBeTruthy();
     app.unmount();
