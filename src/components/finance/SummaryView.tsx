@@ -3,15 +3,18 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DayBars } from '@/components/charts/DayBars';
+import { DayStepper } from '@/components/charts/DayStepper';
 import { DonutChart } from '@/components/charts/DonutChart';
 import { StackedBars } from '@/components/charts/StackedBars';
+import { OutlookCard } from '@/components/finance/OutlookCard';
 import { RecurringTarget } from '@/components/finance/RecurringSheet';
 import { IconBadge, PaymentBadge, ProgressBar, TextButton } from '@/components/finance/ui';
 import { Card } from '@/components/ui';
-import { DateKey, formatDayTitle, fromKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
+import { DateKey, formatDayTitle, formatShortDate, fromKey, WEEKDAY_LABELS, weekdayIndex } from '@/lib/dates';
 import {
-  budgetLevel, BudgetLevel, byNextCharge, dailyFlow, describeWhen, driverStats, FinanceCategory, FinancePeriod, fixedSummary,
-  formatHours, fuelEfficiency, fuelStats, FUEL_CATEGORY, inRange, Range, shiftDays, topSlices, totalsByCategory,
+  abonoState, budgetLevel, BudgetLevel, cashFlow, chargeOn, dailyFlow, describeWhen, driverStats, FinanceCategory, FinancePeriod,
+  fixedSummary, formatHours, fuelEfficiency, fuelStats, FUEL_CATEGORY, inRange, isEnded, nextOccurrence, Outlook, pendingShifts, Range,
+  Recurring, shiftDays, topSlices, totalsByCategory, weekdayDate,
 } from '@/lib/finance';
 import { CurrencyCode, currencyInfo, formatMoney, formatMoneyRounded, formatNumber } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
@@ -27,6 +30,10 @@ type Props = {
   onRecurring: (target: RecurringTarget) => void;
   /** Lleva a la lista completa de fijos (en Planes). */
   onSeeFixed: () => void;
+  /** Abre el panel para apuntar un abono. */
+  onAbono: (recurring: Recurring) => void;
+  /** Cómo cierra el mes y lo que viene (se calcula en la pantalla, con el balance). */
+  outlook: Outlook;
 };
 
 /** Cuántos próximos cobros se ven en el Resumen. */
@@ -36,10 +43,11 @@ const levelColor = (level: BudgetLevel, theme: Theme, fallback: string) =>
   level === 'over' ? theme.danger : level === 'near' ? theme.warning : fallback;
 
 /** Etiqueta bajo cada columna: la inicial del día en la semana; en el mes, el 1 y cada 5. */
+/** "L" en la semana; en el mes, el número (solo 1, 5, 10… se ven siempre; los demás, al elegirlos). */
 const dayLabel = (date: DateKey, period: FinancePeriod) => {
   const d = fromKey(date);
-  if (period === 'week') return WEEKDAY_LABELS[weekdayIndex(d)];
-  return d.getDate() === 1 || d.getDate() % 5 === 0 ? String(d.getDate()) : '';
+  if (period === 'week') return { label: WEEKDAY_LABELS[weekdayIndex(d)] };
+  return { label: String(d.getDate()), hideLabel: d.getDate() !== 1 && d.getDate() % 5 !== 0 };
 };
 
 /** "$2k", "$850": los topes del eje, cortos. */
@@ -50,7 +58,7 @@ const tickFormatter = (currency: CurrencyCode) => (n: number) => {
   return symbolAfter ? `${k} ${symbol}` : `${symbol}${k}`;
 };
 
-export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }: Props) {
+export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed, onAbono, outlook }: Props) {
   const theme = useTheme();
   const today = useToday();
   const currency = useFinance((s) => s.currency);
@@ -60,6 +68,8 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
   const budgets = useFinance((s) => s.budgets);
   const profiles = useFinance((s) => s.profiles);
   const recurring = useFinance((s) => s.recurring);
+  const payouts = useFinance((s) => s.payouts);
+  const credits = useFinance((s) => s.credits);
   const isDriver = profiles.includes('driver');
   const monthly = period === 'month';
   const [flowDay, setFlowDay] = useState<string | null>(null);
@@ -67,8 +77,21 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
 
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const expenses = useMemo(() => totalsByCategory(transactions, 'expense', range), [transactions, range]);
-  const incomes = useMemo(() => totalsByCategory(transactions, 'income', range), [transactions, range]);
-  const flow = useMemo(() => dailyFlow(transactions, range), [transactions, range]);
+  // Lo que entra cuenta el día que llega (lo de Uber, el lunes), como en el balance.
+  const cash = useMemo(() => cashFlow(transactions, payouts, today), [transactions, payouts, today]);
+  const incomes = useMemo(() => totalsByCategory(cash, 'income', range), [cash, range]);
+  const flow = useMemo(() => dailyFlow(cash, range), [cash, range]);
+  // Jornadas de este periodo cuyo dinero aún no llega.
+  const pendingHere = useMemo(
+    () => pendingShifts(transactions, payouts, today).filter((p) => inRange(p.transaction.date, range)),
+    [transactions, payouts, today, range],
+  );
+  const pendingAmount = pendingHere.reduce((s, p) => s + p.amount, 0);
+  // Si cada app paga otro día: "llega entre el lunes 12 y el martes 13".
+  const pendingDates = pendingHere.flatMap((p) => p.parts.map((x) => x.date)).sort();
+  const pendingWhen = pendingDates.length && pendingDates[0] !== pendingDates.at(-1)
+    ? `entre el ${weekdayDate(pendingDates[0])} y el ${weekdayDate(pendingDates.at(-1)!)}`
+    : pendingDates.length ? `el ${weekdayDate(pendingDates[0])}` : '';
   const driver = useMemo(() => (isDriver ? driverStats(transactions, range) : null), [isDriver, transactions, range]);
   const shifts = useMemo(() => (isDriver ? shiftDays(transactions, range) : []), [isDriver, transactions, range]);
   const fuel = useMemo(() => fuelStats(transactions, range), [transactions, range]);
@@ -77,8 +100,16 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
   const showFuel = hasFuelCategory && (isDriver || transactions.some((t) => t.fuel));
   // Los gastos fijos miran a lo que viene: solo se ven en el periodo en curso.
   const current = inRange(today, range);
-  const fixedList = useMemo(() => byNextCharge(recurring.filter((r) => r.kind === 'expense'), today), [recurring, today]);
-  const fixed = useMemo(() => fixedSummary(recurring, today), [recurring, today]);
+  // Los que siguen activos, por la fecha en que tocan (en abonos, la más vieja sin abonar).
+  const fixedList = useMemo(() => recurring
+    .filter((r) => r.kind === 'expense' && !isEnded(r, today))
+    .map((r) => {
+      const state = r.variable ? abonoState(r, transactions, today) : null;
+      return { recurring: r, state, date: state?.overdue[0] ?? nextOccurrence(r, today) ?? r.startDate };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.recurring.name.localeCompare(b.recurring.name)), [recurring, transactions, today]);
+  const overdueAbonos = fixedList.filter((f) => f.state && f.state.overdue.length > 0);
+  const fixed = useMemo(() => fixedSummary(recurring, today, transactions), [recurring, today, transactions]);
   const formatTick = tickFormatter(currency);
   const money = (n: number) => formatMoney(n, currency);
 
@@ -124,20 +155,46 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
   });
   const stackedDays = shifts.map((d) => ({
     key: d.date,
-    label: dayLabel(d.date, period),
+    ...dayLabel(d.date, period),
     name: formatDayTitle(d.date, today),
     parts: legendPlatforms.map((p) => ({ key: p, amount: d.byPlatform[p] ?? 0, color: platformColor(p) })),
   }));
   const selectedShift = shiftDay ? shifts.find((d) => d.date === shiftDay) : undefined;
+  // Los botones ‹ › recorren los días ya vividos del periodo.
+  const shiftKeys = shifts.filter((d) => d.date <= today).map((d) => d.date);
 
-  const flowDays = flow.map((d) => ({ key: d.date, label: dayLabel(d.date, period), name: formatDayTitle(d.date, today), income: d.income, expense: d.expense }));
+  const flowDays = flow.map((d) => ({ key: d.date, ...dayLabel(d.date, period), name: formatDayTitle(d.date, today), income: d.income, expense: d.expense }));
   const selectedFlow = flowDay ? flow.find((d) => d.date === flowDay) : undefined;
+  const flowKeys = flow.filter((d) => d.date <= today).map((d) => d.date);
   const busiest = flow.reduce<(typeof flow)[number] | null>((best, d) => (d.expense > (best?.expense ?? 0) ? d : best), null);
 
   const empty = !expenses.length && !incomes.length;
 
   return (
     <View style={styles.gap}>
+      {overdueAbonos.map(({ recurring: r, state }) => (
+        <Pressable
+          key={r.id}
+          onPress={() => onAbono(r)}
+          accessibilityRole="button"
+          style={[styles.alert, { backgroundColor: theme.warning + theme.emptyAlpha }]}
+        >
+          <View style={[styles.alertIcon, { backgroundColor: theme.warning }]}>
+            <Ionicons name="cash" size={14} color="#FFFFFF" />
+          </View>
+          <Text style={[styles.alertText, { color: theme.text }]}>
+            Toca abonar a {r.name}
+            {state!.overdue[0] === today ? ' hoy' : ` (desde el ${formatShortDate(state!.overdue[0], today)})`}
+            {state!.suggested ? `: ${money(state!.suggested)}` : ''}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+        </Pressable>
+      ))}
+
+      {current && (transactions.length > 0 || recurring.length > 0) && (
+        <OutlookCard outlook={outlook} recurring={recurring} today={today} currency={currency} format={money} formatTick={formatTick} />
+      )}
+
       {alerts.map((a) => {
         const name = categoryMap.get(a.categoryId)?.name ?? 'Categoría';
         const color = levelColor(a.level, theme, theme.primary);
@@ -180,20 +237,27 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
                   ))}
                 </View>
               )}
-              <Text style={[styles.detail, { color: theme.text }]}>
-                {selectedShift
-                  ? `${formatDayTitle(selectedShift.date, today)} · ${
-                      Object.keys(selectedShift.byPlatform).length
-                        ? legendPlatforms.filter((p) => selectedShift.byPlatform[p]).map((p) => `${p} ${money(selectedShift.byPlatform[p])}`).join(' · ')
-                        : 'sin jornada'
-                    }`
-                  : 'Toca un día para ver lo de cada app.'}
-              </Text>
+              <DayStepper keys={shiftKeys} selected={shiftDay} onSelect={setShiftDay}>
+                <Text style={[styles.detail, { color: theme.text }]}>
+                  {selectedShift
+                    ? `${formatDayTitle(selectedShift.date, today)} · ${
+                        Object.keys(selectedShift.byPlatform).length
+                          ? legendPlatforms.filter((p) => selectedShift.byPlatform[p]).map((p) => `${p} ${money(selectedShift.byPlatform[p])}`).join(' · ')
+                          : 'sin jornada'
+                      }`
+                    : 'Toca un día o usa las flechas para ver lo de cada app.'}
+                </Text>
+              </DayStepper>
 
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
               <Line label="Ganado en viajes" value={money(driver.income)} />
               <Line label="Gastos del auto" value={money(-driver.vehicleCosts)} />
               <Line label="Te dejó" value={money(driver.net)} strong color={driver.net < 0 ? theme.danger : theme.primary} />
+              {pendingAmount > 0 && (
+                <Text style={[styles.hint, { color: theme.muted }]}>
+                  De lo ganado, {money(pendingAmount)} aún no te lo pagan: llega {pendingWhen}.
+                </Text>
+              )}
               <View style={styles.stats}>
                 {driver.netPerHour != null && <Stat label="Neto por hora" value={money(driver.netPerHour)} />}
                 {driver.perHour != null && <Stat label="Bruto por hora" value={money(driver.perHour)} />}
@@ -297,22 +361,27 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
             <Text style={[styles.muted, { color: theme.muted }]}>Este mes no toca ninguno.</Text>
           )}
           <View style={styles.list}>
-            {fixedList.slice(0, UPCOMING).map(({ recurring: r, date }) => {
-              const when = describeWhen(date, today);
+            {fixedList.slice(0, UPCOMING).map(({ recurring: r, date, state }) => {
+              const when = state?.overdue.length ? 'toca abonar' : describeWhen(date, today);
+              // En abonos, lo sugerido (o nada, si se apunta lo que se pueda).
+              const charge = state ? state.suggested : chargeOn(r, date);
               return (
                 <Pressable
                   key={r.id}
-                  onPress={() => onRecurring(r)}
+                  onPress={() => (state ? onAbono(r) : onRecurring(r))}
                   accessibilityRole="button"
-                  accessibilityLabel={`${r.name}: ${money(r.amount)}, ${when}`}
+                  accessibilityLabel={`${r.name}: ${charge != null ? money(charge) : 'abono'}, ${when}`}
                   style={({ pressed }) => [styles.categoryRow, pressed && { opacity: 0.7 }]}
                 >
                   <PaymentBadge name={r.name} category={categoryMap.get(r.categoryId)} size={34} />
                   <View style={styles.flex}>
                     <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{r.name}</Text>
-                    <Text style={[styles.small, { color: theme.muted }]}>{when.charAt(0).toUpperCase() + when.slice(1)}</Text>
+                    <Text style={[styles.small, { color: theme.muted }]}>
+                      {when.charAt(0).toUpperCase() + when.slice(1)}
+                      {r.creditId ? ` · ${credits.find((c) => c.id === r.creditId)?.name ?? ''}` : ''}
+                    </Text>
                   </View>
-                  <Text style={[styles.amount, { color: theme.text }]}>{money(r.amount)}</Text>
+                  <Text style={[styles.amount, { color: theme.text }]}>{charge != null ? money(charge) : 'Abonar'}</Text>
                 </Pressable>
               );
             })}
@@ -374,13 +443,15 @@ export function SummaryView({ range, period, onBudget, onRecurring, onSeeFixed }
               <Text style={[styles.legendText, { color: theme.muted }]}>Gastos</Text>
             </View>
           </View>
-          <Text style={[styles.detail, { color: theme.text }]}>
-            {selectedFlow
-              ? `${formatDayTitle(selectedFlow.date, today)} · ingresos ${money(selectedFlow.income)} · gastos ${money(selectedFlow.expense)}`
-              : busiest
-                ? `Día de más gasto: ${formatDayTitle(busiest.date, today)} (${money(busiest.expense)}). Toca un día para ver el detalle.`
-                : 'Toca un día para ver el detalle.'}
-          </Text>
+          <DayStepper keys={flowKeys} selected={flowDay} onSelect={setFlowDay}>
+            <Text style={[styles.detail, { color: theme.text }]}>
+              {selectedFlow
+                ? `${formatDayTitle(selectedFlow.date, today)} · ingresos ${money(selectedFlow.income)} · gastos ${money(selectedFlow.expense)}`
+                : busiest
+                  ? `Día de más gasto: ${formatDayTitle(busiest.date, today)} (${money(busiest.expense)}). Toca un día o usa las flechas.`
+                  : 'Toca un día o usa las flechas para ver el detalle.'}
+            </Text>
+          </DayStepper>
         </Card>
       )}
 

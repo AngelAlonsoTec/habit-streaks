@@ -7,7 +7,7 @@ import { DatePicker } from '@/components/DatePicker';
 import { Chip, SectionTitle } from '@/components/ui';
 import type { Habit } from '@/lib/habit';
 import { MAX_OBJECTIVE_LENGTH, Objective, suggestObjectives } from '@/lib/objectives';
-import { confirmAction } from '@/lib/platform';
+import { confirmAction, releaseFocus } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useHabits } from '@/store/habits';
 import { useTheme } from '@/theme';
@@ -23,7 +23,11 @@ type Props = {
 };
 
 /** Crear o editar un objetivo: título (con sugerencias), fecha límite opcional, orden y borrar. */
-export function ObjectiveSheet({ habit, objective, onClose }: Props) {
+export function ObjectiveSheet({ habit, objective, onClose: close }: Props) {
+  const onClose = () => {
+    releaseFocus();
+    close();
+  };
   return (
     <Modal visible={objective != null} transparent animationType="fade" onRequestClose={onClose}>
       {/* Se monta de nuevo en cada apertura para partir de los datos del objetivo. */}

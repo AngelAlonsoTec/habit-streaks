@@ -2,11 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import { Path, Rect } from 'react-native-svg';
 
+import { AxisLabels } from '../charts/AxisLabels';
 import { BarChart } from '../BarChart';
 import { FitGrid } from '../FitGrid';
 import { Heatmap } from '../Heatmap';
 import { MonthCalendar } from '../MonthCalendar';
 import { TimePickerModal } from '../TimePickerModal';
+import { Chip, ChipRows } from '../ui';
 
 beforeAll(() => jest.useFakeTimers({ now: new Date(2026, 8, 25, 12) })); // viernes 25/9/2026
 afterAll(() => jest.useRealTimers());
@@ -210,5 +212,47 @@ describe('<Heatmap /> ajustado al ancho', () => {
     render(<Heatmap counts={{}} color="#39D353" startKey="2026-01-01" endKey="2026-03-31" showMonthLabels />);
     expect(['Ene 26', 'Feb', 'Mar'].map((l) => screen.getByText(l))).toHaveLength(3);
     expect(screen.queryByText('Abr')).toBeNull();
+  });
+});
+
+describe('<ChipRows />', () => {
+  const rows = () => screen.getAllByTestId('chip-row');
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `Categoría ${i + 1}`);
+
+  it('con muchas, dos filas como mucho (se deslizan de lado)', () => {
+    render(<ChipRows>{names(9).map((n) => <Chip key={n} label={n} />)}</ChipRows>);
+    expect(rows()).toHaveLength(2);
+    expect(screen.getAllByRole('button')).toHaveLength(9);
+  });
+
+  it('con pocas, una sola fila', () => {
+    render(<ChipRows>{names(3).map((n) => <Chip key={n} label={n} />)}</ChipRows>);
+    expect(rows()).toHaveLength(1);
+  });
+});
+
+describe('<AxisLabels />', () => {
+  // Un mes de 30 días: solo 1, 5, 10… se rotulan siempre.
+  const month = (selected: number | null) =>
+    Array.from({ length: 30 }, (_, i) => ({
+      key: String(i + 1),
+      text: String(i + 1),
+      selected: selected === i + 1,
+      hidden: i > 0 && (i + 1) % 5 !== 0,
+    }));
+
+  it('sin elegir, solo los días que se rotulan', () => {
+    render(<AxisLabels labels={month(null)} gutter={44} gap={2} />);
+    fireEvent(screen.root, 'layout', layout(340));
+    expect(screen.getByText('5')).toBeTruthy();
+    expect(screen.queryByText('7')).toBeNull();
+  });
+
+  it('el día elegido se ve aunque no sea de los rotulados, y esconde a los vecinos que tapa', () => {
+    render(<AxisLabels labels={month(7)} gutter={44} gap={2} />);
+    fireEvent(screen.root, 'layout', layout(340));
+    expect(screen.getByText('7')).toBeTruthy();
+    expect(screen.queryByText('5')).toBeNull(); // a dos columnas: chocaría con la pastilla
+    expect(screen.getByText('10')).toBeTruthy();
   });
 });

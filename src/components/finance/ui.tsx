@@ -142,6 +142,38 @@ export function TextButton({ label, icon, color, onPress, accessibilityLabel }: 
   );
 }
 
+/** Un número con botones − y +: pagos, meses, quincenas. */
+export function Stepper({ value, min, max, onChange, label, accessibilityLabel }: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  /** Lo que se lee en medio: "4 meses". */
+  label: string;
+  accessibilityLabel: string;
+}) {
+  const theme = useTheme();
+  const button = (icon: IconName, next: number, disabled: boolean, a11y: string) => (
+    <Pressable
+      onPress={() => onChange(next)}
+      disabled={disabled}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={a11y}
+      style={({ pressed }) => [styles.stepperButton, { backgroundColor: theme.card, opacity: disabled ? 0.35 : pressed ? 0.6 : 1 }]}
+    >
+      <Ionicons name={icon} size={20} color={theme.text} />
+    </Pressable>
+  );
+  return (
+    <View style={[styles.stepper, { backgroundColor: theme.surface }]} accessible={false}>
+      {button('remove', value - 1, value <= min, `Menos: ${accessibilityLabel}`)}
+      <Text style={[styles.stepperLabel, { color: theme.text }]} accessibilityLabel={`${accessibilityLabel}: ${label}`}>{label}</Text>
+      {button('add', value + 1, value >= max, `Más: ${accessibilityLabel}`)}
+    </View>
+  );
+}
+
 /** Barra de progreso de 0 a 1 (se recorta a 1: lo que sobra se cuenta en el texto). */
 export function ProgressBar({ progress, color, track, style }: { progress: number; color: string; track: string; style?: ViewStyle }) {
   return (
@@ -215,5 +247,8 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: 4, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
   badge: { alignItems: 'center', justifyContent: 'center' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 6, borderRadius: 14 },
+  stepperButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  stepperLabel: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
   mono: { fontWeight: '900', letterSpacing: -0.3 },
 });

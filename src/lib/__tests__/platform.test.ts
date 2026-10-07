@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Alert, AlertButton, Platform } from 'react-native';
+import { Alert, AlertButton, Keyboard, Platform, TextInput } from 'react-native';
 
-import { confirmAction, goBack, tapFeedback } from '../platform';
+import { confirmAction, goBack, releaseFocus, tapFeedback } from '../platform';
 
 jest.mock('expo-router', () => ({
   router: { canGoBack: jest.fn(), back: jest.fn(), replace: jest.fn() },
@@ -88,5 +88,40 @@ describe('goBack', () => {
     (router.canGoBack as jest.Mock).mockReturnValue(false);
     goBack();
     expect(router.replace).toHaveBeenCalledWith('/');
+  });
+});
+
+describe('releaseFocus', () => {
+  it('quita el foco del campo y cierra el teclado (en Android, cerrar con un campo enfocado cerraba la app)', () => {
+    const blur = jest.fn();
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue({ blur } as never);
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    releaseFocus();
+    expect(blur).toHaveBeenCalled();
+    expect(dismiss).toHaveBeenCalled();
+  });
+
+  it('goBack suelta el foco antes de salir de la pantalla', () => {
+    const blur = jest.fn();
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue({ blur } as never);
+    (router.canGoBack as jest.Mock).mockReturnValue(true);
+    (router.back as jest.Mock).mockImplementation(() => expect(blur).toHaveBeenCalled());
+    goBack();
+    expect(router.back).toHaveBeenCalled();
+  });
+
+  it('sin campo enfocado, o en web (sin currentlyFocusedInput), no falla', () => {
+    jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(null as never);
+    expect(() => releaseFocus()).not.toThrow();
+    jest.restoreAllMocks();
+
+    const original = TextInput.State.currentlyFocusedInput;
+    // Así es en react-native-web: la función no existe.
+    (TextInput.State as { currentlyFocusedInput?: unknown }).currentlyFocusedInput = undefined;
+    try {
+      expect(() => releaseFocus()).not.toThrow();
+    } finally {
+      TextInput.State.currentlyFocusedInput = original;
+    }
   });
 });

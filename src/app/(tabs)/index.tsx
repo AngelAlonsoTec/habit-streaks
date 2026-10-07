@@ -5,9 +5,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HabitActionsSheet } from '@/components/HabitActionsSheet';
+import { AnimatedLogo } from '@/components/AnimatedLogo';
 import { GradientCard, ON_GRADIENT } from '@/components/GradientCard';
 import { HabitCard } from '@/components/HabitCard';
 import { ProgressRing } from '@/components/ProgressRing';
+import { ScreenBackdrop } from '@/components/ScreenBackdrop';
 import { RecordSheet } from '@/components/RecordSheet';
 import { Chip, HeaderButton } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
@@ -101,6 +103,7 @@ export default function TodayScreen() {
 
   return (
     <>
+      <ScreenBackdrop colors={theme.backdropHabits} />
       {/* Encabezado propio (no el nativo): en Android los botones del header nativo dejan de
           responder mientras la barra anima el cambio de icono. */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
@@ -124,7 +127,7 @@ export default function TodayScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: FAB_SPACE }]}>
         {habits.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="grid" size={56} color={theme.primary} />
+            <AnimatedLogo color={theme.primary} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>Empieza tu primer hábito</Text>
             <Text style={[styles.emptyText, { color: theme.muted }]}>
               Elige una sugerencia o crea el tuyo. Cada día que lo cumplas se pintará un cuadrito.

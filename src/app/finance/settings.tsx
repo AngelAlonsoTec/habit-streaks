@@ -4,9 +4,9 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CurrencyOptions, ProfileOptions } from '@/components/finance/Onboarding';
-import { IconBadge, TextButton } from '@/components/finance/ui';
-import { Card, SectionTitle } from '@/components/ui';
-import { isCustomCategory, MAX_PLATFORM_LENGTH, Profile } from '@/lib/finance';
+import { IconBadge, SheetHeader, SheetModal, TextButton } from '@/components/finance/ui';
+import { Card, Chip, SectionTitle } from '@/components/ui';
+import { describePayout, isCustomCategory, MAX_PLATFORM_LENGTH, Profile } from '@/lib/finance';
 import { confirmAction, goBack } from '@/lib/platform';
 import { useFinance } from '@/store/finance';
 import { chartColor, useTheme } from '@/theme';
@@ -22,6 +22,9 @@ export default function FinanceSettingsScreen() {
   const setCurrency = useFinance((s) => s.setCurrency);
   const addPlatform = useFinance((s) => s.addPlatform);
   const removePlatform = useFinance((s) => s.removePlatform);
+  const payouts = useFinance((s) => s.payouts);
+  const setPayout = useFinance((s) => s.setPayout);
+  const [payoutFor, setPayoutFor] = useState<string | null>(null);
   const deleteCategory = useFinance((s) => s.deleteCategory);
   const resetFinance = useFinance((s) => s.resetFinance);
   const [newPlatform, setNewPlatform] = useState('');
@@ -67,20 +70,30 @@ export default function FinanceSettingsScreen() {
       {profiles.includes('driver') && (
         <>
           <SectionTitle>Plataformas</SectionTitle>
-          <View style={styles.wrap}>
+          <Card style={styles.list}>
             {platforms.map((p) => (
-              <Pressable
-                key={p}
-                onPress={() => removePlatform(p)}
-                accessibilityRole="button"
-                accessibilityLabel={`Quitar ${p}`}
-                style={[styles.platform, { backgroundColor: theme.surface }]}
-              >
-                <Text style={[styles.platformText, { color: theme.text }]}>{p}</Text>
-                <Ionicons name="close-circle" size={16} color={theme.muted} />
-              </Pressable>
+              <View key={p} style={styles.platformRow}>
+                <Text style={[styles.categoryName, { color: theme.text }]}>{p}</Text>
+                {/* Cuándo paga: lo de las que pagan por semana se ve "por cobrar" hasta ese día. */}
+                <Pressable
+                  onPress={() => setPayoutFor(p)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cuándo paga ${p}: ${describePayout(payouts[p])}`}
+                  style={({ pressed }) => [styles.payout, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="time-outline" size={14} color={theme.muted} />
+                  <Text style={[styles.payoutText, { color: theme.text }]}>{describePayout(payouts[p])}</Text>
+                  <Ionicons name="chevron-down" size={14} color={theme.muted} />
+                </Pressable>
+                <Pressable onPress={() => removePlatform(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Quitar ${p}`}>
+                  <Ionicons name="close-circle" size={20} color={theme.muted} />
+                </Pressable>
+              </View>
             ))}
-          </View>
+          </Card>
+          <Text style={[styles.note, { color: theme.muted }]}>
+            Si una app te paga por semana, lo de tus jornadas se ve aparte del balance («por cobrar») hasta ese día.
+          </Text>
           <View style={styles.inlineRow}>
             <TextInput
               value={newPlatform}
@@ -116,6 +129,30 @@ export default function FinanceSettingsScreen() {
         </>
       )}
 
+      <SheetModal open={payoutFor != null} onClose={() => setPayoutFor(null)}>
+        {payoutFor != null && (
+          <>
+            <SheetHeader icon="time" color={theme.primary} title={`¿Cuándo te paga ${payoutFor}?`} onClose={() => setPayoutFor(null)} />
+            <Text style={[styles.note, { color: theme.muted }]}>
+              Lo de la semana anterior. «Al momento» si te pagan en efectivo o al terminar cada viaje.
+            </Text>
+            <View style={styles.wrap}>
+              {[null, 0, 1, 2, 3, 4, 5, 6].map((d) => (
+                <Chip
+                  key={d ?? 'now'}
+                  label={describePayout(d ?? undefined)}
+                  selected={(payouts[payoutFor] ?? null) === d}
+                  onPress={() => {
+                    setPayout(payoutFor, d);
+                    setPayoutFor(null);
+                  }}
+                />
+              ))}
+            </View>
+          </>
+        )}
+      </SheetModal>
+
       <SectionTitle>Datos</SectionTitle>
       <Pressable onPress={reset} accessibilityRole="button" style={[styles.danger, { borderColor: theme.danger }]}>
         <Ionicons name="trash-outline" size={18} color={theme.danger} />
@@ -129,8 +166,9 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
   note: { fontSize: 12.5, lineHeight: 17, marginTop: 8 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  platform: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  platformText: { fontSize: 14, fontWeight: '600' },
+  platformRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  payout: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  payoutText: { fontSize: 13, fontWeight: '700' },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
   input: {
     flex: 1, fontSize: 15, fontWeight: '600', paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14,

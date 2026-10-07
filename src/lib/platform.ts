@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Href, router } from 'expo-router';
-import { Alert, Platform } from 'react-native';
+import { Alert, Keyboard, Platform, TextInput } from 'react-native';
 
 export function tapFeedback() {
   if (Platform.OS === 'web') return;
@@ -26,8 +26,20 @@ export function confirmAction(title: string, message: string, confirmText: strin
   });
 }
 
+/**
+ * Suelta el campo que tenga el foco y cierra el teclado. Hay que hacerlo antes de cerrar una
+ * pantalla o un panel: en Android, si un campo enfocado dentro de un ScrollView desaparece con el
+ * teclado abierto, la app se cierra ("parameter must be a descendant of this view").
+ */
+export function releaseFocus() {
+  // En web no existe currentlyFocusedInput (ahí basta con Keyboard.dismiss, que quita el foco).
+  TextInput.State?.currentlyFocusedInput?.()?.blur?.();
+  Keyboard.dismiss();
+}
+
 /** Vuelve atrás o, si se entró por URL directa (web/deep link), navega a `fallback`. */
 export function goBack(fallback: Href = '/') {
+  releaseFocus();
   if (router.canGoBack()) router.back();
   else router.replace(fallback);
 }

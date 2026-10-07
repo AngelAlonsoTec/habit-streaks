@@ -23,6 +23,9 @@ const light = {
   /** Degradados de las tarjetas principales (de arriba a la izquierda a abajo a la derecha). */
   heroHabits: ['#166534', '#22A355'] as [string, string],
   heroFinance: ['#2B2A7A', '#4F46E5'] as [string, string],
+  /** Manchas de color del fondo de cada pestaña (arriba, al lado, abajo). */
+  backdropHabits: ['#22A355', '#2EC4B6', '#3B82F6'] as [string, string, string],
+  backdropFinance: ['#4F46E5', '#A855F7', '#2EC4B6'] as [string, string, string],
 };
 
 const dark: typeof light = {
@@ -41,6 +44,8 @@ const dark: typeof light = {
   shadow: 'none',
   heroHabits: ['#0F3D22', '#1A7A3C'],
   heroFinance: ['#1D1B4F', '#3B35B5'],
+  backdropHabits: ['#2EA043', '#1F9E93', '#2F6FD6'],
+  backdropFinance: ['#5B54F0', '#9D4EDD', '#1F9E93'],
 };
 
 export type Theme = typeof light;

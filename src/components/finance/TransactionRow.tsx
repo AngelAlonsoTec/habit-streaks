@@ -29,10 +29,12 @@ type Props = {
   transaction: Transaction;
   category: FinanceCategory | undefined;
   currency: CurrencyCode;
+  /** "Por cobrar: llega el lunes 12" si es una jornada que aún no se paga. */
+  pending?: string;
   onPress: (t: Transaction) => void;
 };
 
-export function TransactionRow({ transaction: t, category = UNKNOWN, currency, onPress }: Props) {
+export function TransactionRow({ transaction: t, category = UNKNOWN, currency, pending, onPress }: Props) {
   const theme = useTheme();
   const income = t.kind === 'income';
   const title = t.note || category.name;
@@ -42,7 +44,7 @@ export function TransactionRow({ transaction: t, category = UNKNOWN, currency, o
     <Pressable
       onPress={() => onPress(t)}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${amount}`}
+      accessibilityLabel={`${title}, ${amount}${pending ? `, ${pending}` : ''}`}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       {/* Un gasto de Netflix o Spotify, con la insignia del servicio. */}
@@ -60,7 +62,11 @@ export function TransactionRow({ transaction: t, category = UNKNOWN, currency, o
           </View>
         ) : null}
       </View>
-      <Text style={[styles.amount, { color: income ? theme.primary : theme.text }]}>{amount}</Text>
+      {/* En Movimientos, lo que sale en rojo y lo que entra en verde: se ve de un vistazo. */}
+      <View style={styles.right}>
+        <Text style={[styles.amount, { color: income ? theme.primary : theme.danger }]}>{amount}</Text>
+        {pending && <Text style={[styles.pending, { color: theme.warning }]}>{pending}</Text>}
+      </View>
     </Pressable>
   );
 }
@@ -72,4 +78,6 @@ const styles = StyleSheet.create({
   detailsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   details: { fontSize: 12.5, flexShrink: 1 },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  right: { alignItems: 'flex-end', gap: 2 },
+  pending: { fontSize: 11.5, fontWeight: '700' },
 });

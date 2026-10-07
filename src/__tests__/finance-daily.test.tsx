@@ -130,7 +130,9 @@ describe('conductor: una semana con Uber y DiDi (lunes 5 a domingo 11 de octubre
     app = openApp('2026-10-11', 21);
     // Ganado: 1970 + 1630 + 1420 + 1850 + 1950 + 980 = 9800.
     // Auto: renta 2800 + gasolina 3200 + lavado 80 + casetas 65 = 6145. Comida: 695.
-    expect(await screen.findByLabelText('Balance: $2,960')).toBeTruthy(); // 9800 − 6145 − 695
+    // Uber paga el lunes: sus 6500 van aparte («por cobrar») y el balance aún no los cuenta.
+    expect(await screen.findByLabelText('Balance: −$3,540')).toBeTruthy(); // 9800 − 6500 − 6145 − 695
+    expect(screen.getByLabelText('Por cobrar: $6,500')).toBeTruthy();
     expect(screen.getByLabelText('Ganado en viajes: $9,800')).toBeTruthy();
     expect(screen.getByLabelText('Gastos del auto: −$6,145')).toBeTruthy();
     expect(screen.getByLabelText('Te dejó: $3,655')).toBeTruthy();
@@ -151,8 +153,12 @@ describe('conductor: una semana con Uber y DiDi (lunes 5 a domingo 11 de octubre
     expect(await screen.findByText('Uber + DiDi · 10 h · 24 viajes')).toBeTruthy();
     app.unmount();
 
-    // Lunes siguiente: la renta se apunta una sola vez aunque abra la app varias veces.
-    for (const hour of [6, 13, 22]) openApp('2026-10-12', hour).unmount();
+    // Lunes siguiente: llega lo de Uber y se cobra la renta, una sola vez aunque abra la app varias veces.
+    app = openApp('2026-10-12', 6);
+    expect(await screen.findByLabelText('Balance: $3,700')).toBeTruthy(); // 6500 de Uber − 2800 de renta
+    expect(screen.queryByLabelText(/^Por cobrar/)).toBeNull();
+    app.unmount();
+    for (const hour of [13, 22]) openApp('2026-10-12', hour).unmount();
     expect(finance().transactions.filter((t) => t.categoryId === 'renta-auto').map((t) => t.date)).toEqual(['2026-10-05', '2026-10-12']);
   });
 

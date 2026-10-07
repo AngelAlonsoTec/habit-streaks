@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { CategoryPicker } from '@/components/finance/CategoryPicker';
 import { AmountInput, PrimaryButton, SheetHeader, SheetModal, TextButton } from '@/components/finance/ui';
 import { Chip, SectionTitle } from '@/components/ui';
 import { addMonths, fromKey, toKey } from '@/lib/dates';
 import { monthSpent } from '@/lib/finance';
 import { formatMoney, formatMoneyRounded, moneyInputText, parseMoney } from '@/lib/money';
+import { releaseFocus } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
 import { chartColor, useTheme } from '@/theme';
@@ -17,7 +19,11 @@ type Props = {
 };
 
 /** Presupuesto mensual de una categoría de gasto. */
-export function BudgetSheet({ target, onClose }: Props) {
+export function BudgetSheet({ target, onClose: close }: Props) {
+  const onClose = () => {
+    releaseFocus();
+    close();
+  };
   return (
     <SheetModal open={target != null} onClose={onClose}>
       {target != null && <Body initial={target === 'new' ? null : target} onClose={onClose} />}
@@ -69,18 +75,7 @@ function Body({ initial, onClose }: { initial: string | null; onClose: () => voi
         {initial == null && (
           <>
             <SectionTitle>Categoría</SectionTitle>
-            <View style={styles.wrap}>
-              {choices.map((c) => (
-                <Chip
-                  key={c.id}
-                  label={c.name}
-                  icon={c.icon}
-                  color={chartColor(c.color, theme)}
-                  selected={categoryId === c.id}
-                  onPress={() => setCategoryId(c.id)}
-                />
-              ))}
-            </View>
+            <CategoryPicker categories={choices} value={categoryId} onChange={setCategoryId} />
           </>
         )}
 

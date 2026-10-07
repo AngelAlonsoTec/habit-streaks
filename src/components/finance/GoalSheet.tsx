@@ -7,7 +7,7 @@ import { AmountInput, PrimaryButton, SheetHeader, SheetModal, TextButton } from 
 import { Chip, SectionTitle } from '@/components/ui';
 import { GOAL_ICONS, MAX_GOAL_NAME_LENGTH, SavingsGoal, savingsPace } from '@/lib/finance';
 import { formatMoney, moneyInputText, parseMoney } from '@/lib/money';
-import { confirmAction } from '@/lib/platform';
+import { confirmAction, releaseFocus } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
 import { HABIT_COLORS, IconName, useTheme } from '@/theme';
@@ -30,7 +30,11 @@ type Props = {
   onClose: () => void;
 };
 
-export function GoalSheet({ goal, onClose }: Props) {
+export function GoalSheet({ goal, onClose: close }: Props) {
+  const onClose = () => {
+    releaseFocus();
+    close();
+  };
   return (
     <SheetModal open={goal != null} onClose={onClose}>
       {goal != null && <Body goal={goal === 'new' ? null : goal} onClose={onClose} />}

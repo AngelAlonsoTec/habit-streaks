@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { TransactionRow } from '@/components/finance/TransactionRow';
 import { Card, Chip } from '@/components/ui';
 import { DateKey, formatDayTitle, formatShortDate } from '@/lib/dates';
-import { byNewest, inRange, Range, Transaction, TxKind } from '@/lib/finance';
+import { byNewest, inRange, pendingShifts, Range, Transaction, TxKind, weekdayDate } from '@/lib/finance';
 import { formatMoney } from '@/lib/money';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
@@ -21,7 +21,12 @@ export function MovementsView({ range }: { range: Range }) {
   const currency = useFinance((s) => s.currency);
   const transactions = useFinance((s) => s.transactions);
   const categories = useFinance((s) => s.categories);
+  const payouts = useFinance((s) => s.payouts);
   const [filter, setFilter] = useState<TxKind | null>(null);
+  const pending = useMemo(
+    () => new Map(pendingShifts(transactions, payouts, today).map((p) => [p.transaction.id, `Por cobrar: llega el ${weekdayDate(p.date)}`])),
+    [transactions, payouts, today],
+  );
 
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const days = useMemo(() => {
@@ -61,12 +66,19 @@ export function MovementsView({ range }: { range: Range }) {
           <Card key={day.date} style={styles.day}>
             <View style={styles.dayHeader}>
               <Text style={[styles.dayTitle, { color: theme.muted }]}>{dayLabel(day.date)}</Text>
-              <Text style={[styles.dayTitle, { color: day.net < 0 ? theme.muted : theme.primary }]}>
+              <Text style={[styles.dayTitle, { color: day.net < 0 ? theme.danger : theme.primary }]}>
                 {formatMoney(day.net, currency, { sign: true })}
               </Text>
             </View>
             {day.items.map((t) => (
-              <TransactionRow key={t.id} transaction={t} category={categoryMap.get(t.categoryId)} currency={currency} onPress={openTransaction} />
+              <TransactionRow
+                key={t.id}
+                transaction={t}
+                category={categoryMap.get(t.categoryId)}
+                currency={currency}
+                pending={pending.get(t.id)}
+                onPress={openTransaction}
+              />
             ))}
           </Card>
         ))

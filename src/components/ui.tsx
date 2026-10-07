@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Children, ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { cardStyle, IconName, inkOn, useTheme } from '@/theme';
 
@@ -43,6 +43,25 @@ export function Chip({ label, icon, selected, color, onPress, onLongPress, acces
       {icon && <Ionicons name={icon} size={15} color={fg} />}
       <Text style={[styles.chipText, { color: fg }]}>{label}</Text>
     </Pressable>
+  );
+}
+
+/**
+ * Chips en dos filas como mucho: si hay más de los que caben, se deslizan de lado (en vez de
+ * apilarse en muchas filas). Con tres o menos, una sola fila.
+ */
+export function ChipRows({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children);
+  const half = Math.ceil(items.length / 2);
+  const rows = items.length <= 3 ? [items] : [items.slice(0, half), items.slice(half)];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={styles.chipRows}>
+        {rows.map((row, i) => (
+          <View key={i} testID="chip-row" style={styles.chipRow}>{row}</View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -116,6 +135,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
   chipText: { fontSize: 14, fontWeight: '600' },
+  chipRows: { gap: 8 },
+  chipRow: { flexDirection: 'row', gap: 8 },
   segmented: { flexDirection: 'row', borderRadius: 14, padding: 4 },
   segment: {
     flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FitGrid } from '@/components/FitGrid';
 import { TimePickerModal } from '@/components/TimePickerModal';
-import { Chip, SectionTitle, Segmented } from '@/components/ui';
+import { Chip, ChipRows, SectionTitle, Segmented } from '@/components/ui';
 import { DEFAULT_CATEGORIES } from '@/lib/categories';
 import { WEEKDAY_LABELS } from '@/lib/dates';
 import {
@@ -211,11 +211,12 @@ export function HabitForm({ initial, submitLabel, onSubmit }: Props) {
       {isNew && !hasName && (
         <>
           <SectionTitle>Sugerencias</SectionTitle>
-          <View style={styles.wrap}>
+          {/* Dos filas como mucho; las demás se deslizan de lado. */}
+          <ChipRows>
             {(quit ? QUIT_TEMPLATES : HABIT_TEMPLATES).map((t) => (
               <Chip key={t.name} label={t.name} icon={t.icon} onPress={() => applyTemplate(t)} />
             ))}
-          </View>
+          </ChipRows>
         </>
       )}
 

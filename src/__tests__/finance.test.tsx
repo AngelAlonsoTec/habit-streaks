@@ -4,7 +4,7 @@
  */
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import path from 'path';
-import { Alert, AlertButton } from 'react-native';
+import { Alert, AlertButton, StyleSheet } from 'react-native';
 
 import type { Recurring } from '@/lib/finance';
 import { useFinance } from '@/store/finance';
@@ -114,14 +114,32 @@ describe('movimientos', () => {
     renderRouter(APP_DIR, { initialUrl: '/finance/entry?kind=income' });
     await screen.findByLabelText('Importe');
     type('Importe', '600');
-    fireEvent.press(screen.getByText('Nueva'));
+    // La lista de categorías está abierta mientras no se elige ninguna; al final, "Nueva categoría".
+    fireEvent.press(screen.getByText('Nueva categoría'));
     fireEvent.changeText(screen.getByPlaceholderText('Nombre de la categoría'), 'Clases particulares');
     fireEvent(screen.getByPlaceholderText('Nombre de la categoría'), 'submitEditing');
+    // Queda elegida y la lista se cierra: se ve como un campo, con opción a cambiarla.
+    expect(screen.getByLabelText('Categoría: Clases particulares. Cambiar')).toBeTruthy();
+    expect(screen.queryByText('Sueldo')).toBeNull();
     fireEvent.press(screen.getByText('Guardar ingreso'));
     await waitFor(() => expect(finance().transactions).toHaveLength(1));
     const category = finance().categories.find((c) => c.name === 'Clases particulares');
     expect(category?.kind).toBe('income');
     expect(finance().transactions[0]).toMatchObject({ kind: 'income', categoryId: category?.id });
+  });
+
+  it('la categoría se elige de una lista que se cierra al elegir y se vuelve a abrir para cambiarla', async () => {
+    setup(['worker']);
+    renderRouter(APP_DIR, { initialUrl: '/finance/entry?kind=expense' });
+    await screen.findByLabelText('Importe');
+    type('Importe', '95');
+    fireEvent.press(screen.getByText('Comida'));
+    expect(screen.queryByText('Transporte')).toBeNull();
+    fireEvent.press(screen.getByLabelText('Categoría: Comida. Cambiar'));
+    fireEvent.press(screen.getByText('Transporte'));
+    expect(screen.getByLabelText('Categoría: Transporte. Cambiar')).toBeTruthy();
+    fireEvent.press(screen.getByText('Guardar gasto'));
+    await waitFor(() => expect(finance().transactions[0]).toMatchObject({ categoryId: 'transporte', amount: 95 }));
   });
 
   it('editar y eliminar un movimiento', async () => {
@@ -390,6 +408,168 @@ describe('fijos y metas', () => {
     fireEvent.press(screen.getAllByText('Abonar').at(-1)!);
     expect(await screen.findByText('¡Lograda el 6 oct!')).toBeTruthy();
     expect(screen.queryByLabelText('Abonar a Celular nuevo')).toBeNull();
+  });
+});
+
+describe('plazos, créditos y jornadas por cobrar', () => {
+  it('un préstamo de 4 meses: dice qué pago va y cuándo termina', async () => {
+    setup(['worker']);
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Planes'));
+    fireEvent.press(screen.getByLabelText('Nuevo gasto fijo'));
+    await screen.findByText('Nuevo gasto fijo');
+    type('Nombre del fijo', 'Préstamo');
+    type('Importe del fijo', '1250');
+    fireEvent.press(screen.getAllByText('Otros gastos').at(-1)!);
+    fireEvent.press(screen.getByText('Mañana'));
+    fireEvent.press(screen.getByText('Un número de pagos'));
+    expect(screen.getByText('4 pagos de $1,250 · el último, 7 ene 2027 · en total $5,000')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Más: Número de pagos'));
+    expect(screen.getByText('5 pagos de $1,250 · el último, 7 feb 2027 · en total $6,250')).toBeTruthy();
+    fireEvent.press(screen.getByText('Crear fijo'));
+    expect(await screen.findByText('Pago 1 de 5 · se cobra mañana')).toBeTruthy();
+    expect(finance().recurring[0]).toMatchObject({ count: 5, day: 7, startDate: '2026-10-07' });
+  });
+
+  it('un crédito con compras a meses: cuánto toca pagar, cuánto debe y liquidar', async () => {
+    setup(['worker']);
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Planes'));
+    fireEvent.press(screen.getByLabelText('Nuevo crédito'));
+    await screen.findByText('Nuevo crédito');
+    fireEvent.press(screen.getByText('Coppel'));
+    fireEvent.press(screen.getByText('Crear crédito'));
+    await waitFor(() => expect(finance().credits).toEqual([expect.objectContaining({ name: 'Coppel', day: 6 })]));
+
+    fireEvent.press(await screen.findByLabelText('Agregar compra a Coppel'));
+    await screen.findByText('Compra con Coppel');
+    type('Qué compraste', 'Refri');
+    type('Monto de la compra', '9000');
+    fireEvent.press(screen.getByText('12 meses'));
+    fireEvent.press(screen.getAllByText('Otros gastos').at(-1)!);
+    // Lo que se compra hoy se empieza a pagar el próximo día de pago.
+    expect(screen.getByText('12 pagos de $750 · terminas el 6 oct 2027.')).toBeTruthy();
+    fireEvent.press(screen.getAllByText('Agregar compra').at(-1)!);
+
+    expect(await screen.findByLabelText('Próximo pago de Coppel: $750, el 6 nov')).toBeTruthy();
+    expect(screen.getByLabelText('Debes $9,000')).toBeTruthy();
+
+    // Lo liquida de una vez.
+    fireEvent.press(screen.getByLabelText(/^Compra Refri/));
+    fireEvent.press(await screen.findByText('Liquidar ($9,000)'));
+    await waitFor(() => expect(finance().transactions).toEqual([expect.objectContaining({ amount: 9000, note: 'Refri (liquidación)' })]));
+    expect(await screen.findByText('Liquidadas: Refri.')).toBeTruthy();
+  });
+
+  it('lo de Uber va «por cobrar» hasta el lunes, o hasta marcarlo como cobrado', async () => {
+    const monday = makeTx({
+      kind: 'income', categoryId: 'viajes', date: '2026-10-05', amount: 1600,
+      shift: { hours: 8, platforms: [{ platform: 'Uber', amount: 1200, trips: 14 }, { platform: 'inDrive', amount: 400, trips: 5 }] },
+    });
+    setup(['driver'], { transactions: [monday] });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    // inDrive (efectivo) ya cuenta; lo de Uber llega el lunes 12.
+    expect(await screen.findByLabelText('Balance: $400')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Por cobrar: $1,200'));
+    expect(await screen.findByText('Llega el lunes 12')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ya me pagaron: Ayer'));
+    expect(await screen.findByLabelText('Balance: $1,600')).toBeTruthy();
+    expect(screen.queryByLabelText(/^Por cobrar/)).toBeNull();
+  });
+
+  it('dejar de pagar una suscripción: lo pagado se queda y se ve en Terminados', async () => {
+    setup(['worker'], {
+      recurring: [{
+        id: 'cl', kind: 'expense', name: 'Claude', amount: 400, categoryId: 'suscripciones', frequency: 'monthly', day: 6,
+        startDate: '2026-08-06', lastApplied: '2026-10-06', createdAt: '2026-08-06T12:00:00.000Z',
+      }],
+      transactions: ['2026-08-06', '2026-09-06', '2026-10-06'].map((date) =>
+        makeTx({ amount: 400, categoryId: 'suscripciones', note: 'Claude', date, recurringId: 'cl' })),
+    });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Planes'));
+    fireEvent.press(screen.getByLabelText(/^Fijo Claude/));
+    fireEvent.press(await screen.findByText('Ya no lo pago'));
+    expect(await screen.findByText('Se queda lo que pagaste: $1,200 en 3 cobros.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Dejar de pagarlo'));
+    expect(await screen.findByText(/Lo dejaste de pagar el 6 oct · pagaste \$1,200 en 3 pagos/)).toBeTruthy();
+    expect(finance().transactions).toHaveLength(3);
+    expect(screen.queryByLabelText(/^Fijo Claude/)).toBeNull();
+  });
+
+  it('abonos: fecha fija, importe distinto cada vez, y lo que se debe', async () => {
+    setup(['worker']);
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Planes'));
+    fireEvent.press(screen.getByLabelText('Nuevo gasto fijo'));
+    await screen.findByText('Nuevo gasto fijo');
+    type('Nombre del fijo', 'Préstamo de mi tío');
+    fireEvent.press(screen.getAllByText('Otros gastos').at(-1)!);
+    fireEvent.press(screen.getByText('Varía (abonos)'));
+    type('Abono sugerido', '500');
+    fireEvent.press(screen.getByText('Quincenal'));
+    fireEvent.press(screen.getByText('Hasta pagar un total'));
+    type('Total que debes', '3000');
+    expect(screen.getByText('Primer abono: 15 oct')).toBeTruthy();
+    fireEvent.press(screen.getByText('Crear fijo'));
+    expect(await screen.findByText('Abonos · el próximo el 15 oct')).toBeTruthy();
+    expect(screen.getByText('Debes $3,000 de $3,000')).toBeTruthy();
+    expect(finance().transactions).toEqual([]);
+
+    // Abona antes de la fecha, y más de lo sugerido.
+    fireEvent.press(screen.getByLabelText('Abonar a Préstamo de mi tío'));
+    await screen.findByText('Abonar a Préstamo de mi tío');
+    type('Importe del abono', '800');
+    expect(screen.getByText('Después de este abono debes $2,200.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Guardar abono'));
+    expect(await screen.findByText('Debes $2,200 de $3,000')).toBeTruthy();
+    expect(screen.getByText('Abonos · el próximo el 31 oct')).toBeTruthy();
+  });
+
+  it('el Resumen dice cómo cierra el mes con los fijos, las deudas y el gasto del día a día', async () => {
+    const fixed = (r: Partial<Recurring> & Pick<Recurring, 'id' | 'name' | 'amount'>): Recurring => ({
+      kind: 'expense', categoryId: 'renta', frequency: 'monthly', day: 1, startDate: '2026-09-01', lastApplied: '2026-10-06',
+      createdAt: '2026-09-01T12:00:00.000Z', ...r,
+    });
+    setup(['worker'], {
+      recurring: [
+        fixed({ id: 'renta', name: 'Renta', amount: 4500 }),
+        fixed({ id: 'sueldo', name: 'Sueldo', amount: 6000, kind: 'income', categoryId: 'sueldo', frequency: 'biweekly', day: 0 }),
+        fixed({ id: 'nf', name: 'Netflix', amount: 219, categoryId: 'suscripciones', day: 20 }),
+      ],
+      transactions: [makeTx({ amount: 300, date: '2026-10-01' }), makeTx({ amount: 4500, categoryId: 'renta', date: '2026-10-01', recurringId: 'renta' })],
+    });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    // −4800 de hoy + 12000 de las quincenas − 219 de Netflix − 42.86 al día × 25 días.
+    expect(await screen.findByLabelText('Así cierras octubre: $5,909.50')).toBeTruthy();
+    expect(screen.getByLabelText('Proyección al cierre del mes: $5,910')).toBeTruthy();
+    expect(screen.getByLabelText('Lo que aún te entra: +$12,000')).toBeTruthy();
+  });
+
+  it('en el Resumen, las flechas recorren los días', async () => {
+    setup(['worker'], { transactions: [makeTx({ amount: 120, date: '2026-10-06' }), makeTx({ amount: 80, date: '2026-10-05' })] });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press((await screen.findAllByLabelText('Día anterior'))[0]);
+    expect(await screen.findByText('Hoy · ingresos $0 · gastos $120')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Día anterior'));
+    expect(screen.getByText('Ayer · ingresos $0 · gastos $80')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Día siguiente'));
+    expect(screen.getByText('Hoy · ingresos $0 · gastos $120')).toBeTruthy();
+  });
+
+  it('en Movimientos, los gastos se ven en rojo y los ingresos en verde', async () => {
+    setup(['worker'], {
+      transactions: [
+        makeTx({ amount: 120, note: 'Tacos', date: '2026-10-06' }),
+        makeTx({ kind: 'income', categoryId: 'sueldo', amount: 6000, note: 'Quincena', date: '2026-10-06' }),
+      ],
+    });
+    renderRouter(APP_DIR, { initialUrl: '/finance' });
+    fireEvent.press(await screen.findByText('Movimientos'));
+    await screen.findByLabelText('Tacos, −$120');
+    const color = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style).color;
+    expect(color('−$120')).toBe('#CF222E');
+    expect(color('+$6,000')).toBe('#1F883D');
   });
 });
 

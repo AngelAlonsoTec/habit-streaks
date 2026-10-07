@@ -7,7 +7,7 @@ import { Chip } from '@/components/ui';
 import { formatShortDate } from '@/lib/dates';
 import { savedAmount, savingsPace } from '@/lib/finance';
 import { formatMoney, moneyInputText, parseMoney } from '@/lib/money';
-import { successFeedback, tapFeedback } from '@/lib/platform';
+import { releaseFocus, successFeedback, tapFeedback } from '@/lib/platform';
 import { useToday } from '@/lib/useToday';
 import { useFinance } from '@/store/finance';
 import { inkOn, useTheme } from '@/theme';
@@ -19,7 +19,11 @@ type Props = {
 };
 
 /** Abonar o retirar dinero de una meta de ahorro. */
-export function DepositSheet({ goalId, onClose }: Props) {
+export function DepositSheet({ goalId, onClose: close }: Props) {
+  const onClose = () => {
+    releaseFocus();
+    close();
+  };
   return (
     <SheetModal open={goalId != null} onClose={onClose}>
       {goalId != null && <Body goalId={goalId} onClose={onClose} />}

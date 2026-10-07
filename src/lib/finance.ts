@@ -129,6 +129,15 @@ export function isCustomCategory(id: string): boolean {
 export const DEFAULT_PLATFORMS = ['Uber', 'DiDi', 'inDrive'];
 export const MAX_PLATFORM_LENGTH = 20;
 
+/**
+ * Día de la semana en que paga cada plataforma lo de la semana anterior (0 = lunes). Las que no
+ * están pagan al momento (efectivo, o lo que se cobra al terminar el viaje).
+ */
+export type Payouts = Record<string, number>;
+
+/** Uber paga los lunes; las demás, al momento hasta que se diga otra cosa en Ajustes. */
+export const DEFAULT_PAYOUTS: Payouts = { Uber: 0 };
+
 // ---------- Movimientos ----------
 
 /** Lo que dejó una plataforma en una jornada. */
@@ -139,6 +148,8 @@ export type ShiftInfo = {
   platforms: PlatformEarning[];
   /** Horas conectado en total, contadas una sola vez aunque hubiera varias apps (null si no se apuntaron). */
   hours: number | null;
+  /** Día en que se marcó como cobrada antes de su día de pago (null o ausente: según la plataforma). */
+  paidOn?: DateKey | null;
 };
 
 /** Viajes de la jornada (null si no se apuntó ninguno). */
@@ -217,6 +228,95 @@ export function formatHours(hours: number): string {
 /** Más recientes primero; en el mismo día, el último registrado arriba. */
 export function byNewest(a: Pick<Transaction, 'date' | 'createdAt'>, b: Pick<Transaction, 'date' | 'createdAt'>): number {
   return b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt);
+}
+
+// ---------- Cuándo llega el dinero de las jornadas ----------
+
+/** Cuándo llega lo de una jornada del día `date`: ese mismo día, o el siguiente `weekday` después de ella. */
+export function payoutDate(date: DateKey, weekday: number | undefined): DateKey {
+  if (weekday == null) return date;
+  let d = addDays(fromKey(date), 1);
+  while (weekdayIndex(d) !== weekday) d = addDays(d, 1);
+  return toKey(d);
+}
+
+export type ShiftPayment = { platform: string; amount: number; date: DateKey };
+
+/** Lo de cada plataforma de una jornada y el día en que llega (si se marcó como cobrada antes, ese día). */
+export function shiftPayments(t: Transaction, payouts: Payouts): ShiftPayment[] {
+  if (!t.shift) return [];
+  const paidOn = t.shift.paidOn && t.shift.paidOn > t.date ? t.shift.paidOn : t.shift.paidOn ? t.date : null;
+  return t.shift.platforms.map((p) => {
+    const date = payoutDate(t.date, payouts[p.platform]);
+    return { platform: p.platform, amount: p.amount, date: paidOn && paidOn < date ? paidOn : date };
+  });
+}
+
+/**
+ * Los movimientos como dinero que entra y sale, para el balance: lo de una jornada cuenta el día en
+ * que llega cada plataforma, y lo que todavía no llega (después de `today`) no cuenta. Las
+ * estadísticas de manejo siguen usando el día trabajado.
+ */
+export function cashFlow(transactions: Transaction[], payouts: Payouts, today: DateKey): Transaction[] {
+  const out: Transaction[] = [];
+  for (const t of transactions) {
+    if (!t.shift) {
+      out.push(t);
+      continue;
+    }
+    for (const p of shiftPayments(t, payouts)) {
+      if (p.date <= today) out.push({ ...t, id: `${t.id}:${p.platform}`, amount: p.amount, date: p.date, shift: null });
+    }
+  }
+  return out;
+}
+
+export type PendingShift = {
+  transaction: Transaction;
+  /** Lo que falta por llegar de esa jornada. */
+  amount: number;
+  /** Cuándo llega (si son varias apps, la última). */
+  date: DateKey;
+  platforms: string[];
+  /** Lo que falta de cada app y cuándo llega (pueden pagar en días distintos). */
+  parts: ShiftPayment[];
+};
+
+/** Jornadas con dinero por cobrar, de la que llega antes a la que llega después. */
+export function pendingShifts(transactions: Transaction[], payouts: Payouts, today: DateKey): PendingShift[] {
+  const pending: PendingShift[] = [];
+  for (const t of transactions) {
+    const parts = shiftPayments(t, payouts).filter((p) => p.date > today);
+    if (!parts.length) continue;
+    pending.push({
+      transaction: t,
+      amount: roundMoney(parts.reduce((s, p) => s + p.amount, 0)),
+      date: parts.reduce((max, p) => (p.date > max ? p.date : max), parts[0].date),
+      platforms: parts.map((p) => p.platform),
+      parts,
+    });
+  }
+  return pending.sort((a, b) => a.date.localeCompare(b.date) || a.transaction.date.localeCompare(b.transaction.date));
+}
+
+/** "Llega el lunes 12" o, si cada app paga otro día, "Uber llega el lunes 12; DiDi, el martes 13". */
+export function describeArrival(parts: ShiftPayment[]): string {
+  if (new Set(parts.map((p) => p.date)).size <= 1) return `Llega el ${weekdayDate(parts[0].date)}`;
+  return [...parts]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((p, i) => (i === 0 ? `${p.platform} llega el ${weekdayDate(p.date)}` : `${p.platform}, el ${weekdayDate(p.date)}`))
+    .join('; ');
+}
+
+/** "lunes 12": el día de la semana con su número. */
+export function weekdayDate(date: DateKey): string {
+  const d = fromKey(date);
+  return `${WEEKDAY_SINGULAR[weekdayIndex(d)]} ${d.getDate()}`;
+}
+
+/** "Al momento" o "Cada lunes". */
+export function describePayout(weekday: number | undefined): string {
+  return weekday == null ? 'Al momento' : `Cada ${WEEKDAY_SINGULAR[weekday]}`;
 }
 
 // ---------- Periodos ----------
@@ -640,9 +740,28 @@ export type Recurring = {
   /** Última fecha que ya se registró (null si todavía ninguna). */
   lastApplied: DateKey | null;
   createdAt: string;
+  /** Cuántos pagos en total (null o ausente: sin fin, como Netflix). */
+  count?: number | null;
+  /** Total a repartir entre los pagos (el último ajusta los centavos); null: todos de `amount`. */
+  total?: number | null;
+  /** Crédito al que pertenece (una compra a meses). */
+  creditId?: string | null;
+  /** Último día en que puede tocar (se liquidó o se dejó de pagar): después ya no se apunta nada. */
+  endedOn?: DateKey | null;
+  /** Por qué terminó antes: se liquidó de una vez, o se dejó de pagar (como una suscripción cancelada). */
+  endKind?: 'settled' | 'cancelled' | null;
+  /**
+   * Abonos: las fechas son fijas pero el importe varía, así que no se apunta solo; en su fecha se
+   * pregunta cuánto se abonó. `amount` es lo sugerido (0: sin sugerencia) y `total`, lo que se debe.
+   */
+  variable?: boolean;
 };
 
-export type RecurringInput = Pick<Recurring, 'kind' | 'name' | 'amount' | 'categoryId' | 'frequency' | 'day'>;
+export type RecurringInput = Pick<Recurring, 'kind' | 'name' | 'amount' | 'categoryId' | 'frequency' | 'day'>
+  & Partial<Pick<Recurring, 'count' | 'total' | 'creditId' | 'variable'>>;
+
+/** Como mucho, 10 años de mensualidades. */
+export const MAX_PAYMENTS = 120;
 
 export const FREQUENCIES: { value: Frequency; label: string }[] = [
   { value: 'weekly', label: 'Semanal' },
@@ -676,9 +795,34 @@ export function occursOn(r: Pick<Recurring, 'frequency' | 'day' | 'startDate'>, 
 /** Como mucho se ponen al día dos años (si la app no se abrió en mucho tiempo). */
 const MAX_CATCH_UP_DAYS = 731;
 
+type Schedule = Pick<Recurring, 'frequency' | 'day' | 'startDate'>
+  & Partial<Pick<Recurring, 'count' | 'endedOn' | 'variable' | 'lastApplied'>>;
+
+/** Las fechas de todos los pagos de un fijo con número de pagos (vacío si no tiene fin). */
+export function planDates(r: Schedule): DateKey[] {
+  const count = Math.min(r.count ?? 0, MAX_PAYMENTS);
+  const dates: DateKey[] = [];
+  for (let d = fromKey(r.startDate); dates.length < count; d = addDays(d, 1)) if (occursOn(r, d)) dates.push(toKey(d));
+  return dates;
+}
+
+/** Hasta cuándo puede tocar: el último pago o el día en que se liquidó (null: sin fin). */
+export function lastChargeDate(r: Schedule): DateKey | null {
+  const last = r.count ? planDates(r).at(-1) ?? null : null;
+  if (r.endedOn) return last && last < r.endedOn ? last : r.endedOn;
+  return last;
+}
+
+/** Importe del pago número `index` (0 = el primero): todos iguales salvo el último si hay un total. */
+export function paymentAmount(r: Pick<Recurring, 'amount' | 'count' | 'total'>, index: number): number {
+  if (r.count && r.total != null && index === r.count - 1) return roundMoney(r.total - r.amount * (r.count - 1));
+  return r.amount;
+}
+
 /** Fechas en que tocaba y aún no se registró, hasta `today` incluido. */
 export function dueDates(r: Recurring, today: DateKey): DateKey[] {
-  const end = fromKey(today);
+  const lastCharge = lastChargeDate(r);
+  const end = fromKey(lastCharge && lastCharge < today ? lastCharge : today);
   const first = r.lastApplied ? addDays(fromKey(r.lastApplied), 1) : fromKey(r.startDate);
   const from = daysBetween(first, end) > MAX_CATCH_UP_DAYS ? addDays(end, -MAX_CATCH_UP_DAYS) : first;
   const dates: DateKey[] = [];
@@ -686,12 +830,86 @@ export function dueDates(r: Recurring, today: DateKey): DateKey[] {
   return dates;
 }
 
-/** Próxima fecha en que se registrará (después de hoy). */
-export function nextOccurrence(r: Pick<Recurring, 'frequency' | 'day' | 'startDate'>, today: DateKey): DateKey {
-  const start = fromKey(r.startDate > today ? r.startDate : toKey(addDays(fromKey(today), 1)));
-  let d = start;
+/**
+ * Próxima fecha en que toca (después de hoy), o null si ya no le quedan pagos. En los abonos, si ya
+ * se abonó por adelantado, la siguiente a esa.
+ */
+export function nextOccurrence(r: Schedule, today: DateKey): DateKey | null {
+  const lastCharge = lastChargeDate(r);
+  if (lastCharge && lastCharge <= today) return null;
+  const after = r.variable && r.lastApplied && r.lastApplied > today ? r.lastApplied : today;
+  let d = fromKey(r.startDate > after ? r.startDate : toKey(addDays(fromKey(after), 1)));
   while (!occursOn(r, d)) d = addDays(d, 1);
-  return toKey(d);
+  const next = toKey(d);
+  return lastCharge && next > lastCharge ? null : next;
+}
+
+export type PlanProgress = {
+  /** Pagos en total, los que ya tocaron (hasta hoy) y los que faltan. */
+  count: number;
+  paid: number;
+  remaining: number;
+  /** Lo que falta por pagar. */
+  owed: number;
+  /** El último pago (o el día en que se liquidó). */
+  lastDate: DateKey;
+  /** Ya no le queda nada: pagó el último o lo liquidó. */
+  finished: boolean;
+};
+
+/** Cómo va un fijo con número de pagos (null si no tiene fin o es de abonos). */
+export function planProgress(r: Recurring, today: DateKey): PlanProgress | null {
+  if (!r.count || r.variable) return null;
+  const dates = planDates(r);
+  const ended = r.endedOn != null && r.endedOn <= today;
+  const left = ended ? [] : dates.map((date, i) => ({ date, i })).filter((x) => x.date > today);
+  return {
+    count: dates.length,
+    paid: dates.length - left.length,
+    remaining: left.length,
+    owed: roundMoney(left.reduce((s, x) => s + paymentAmount(r, x.i), 0)),
+    lastDate: lastChargeDate(r) ?? dates.at(-1)!,
+    finished: left.length === 0,
+  };
+}
+
+/** Ya no le toca nada: terminó su plan, se liquidó, se dejó de pagar o (abonos) se pagó todo. */
+export function isEnded(r: Recurring, today: DateKey): boolean {
+  return nextOccurrence(r, today) == null && (!r.variable || dueDates(r, today).length === 0);
+}
+
+/** Lo que se ha pagado de un fijo (lo que apuntó solo y los abonos): cuánto, cuántas veces y la última. */
+export function paidTo(r: Recurring, transactions: Transaction[]): { amount: number; count: number; last: DateKey | null } {
+  let amount = 0;
+  let count = 0;
+  let last: DateKey | null = null;
+  for (const t of transactions) {
+    if (t.recurringId !== r.id) continue;
+    amount += t.amount;
+    count += 1;
+    if (!last || t.date > last) last = t.date;
+  }
+  return { amount: roundMoney(amount), count, last };
+}
+
+export type AbonoState = {
+  /** Fechas en que tocaba abonar y aún no se abonó (hasta hoy). */
+  overdue: DateKey[];
+  /** La próxima fecha de abono, o null si ya terminó. */
+  next: DateKey | null;
+  paid: number;
+  /** Lo que falta (si se debe un total). */
+  owed: number | null;
+  /** Lo sugerido para el próximo abono (lo que falta, si es menos), o null si no hay sugerencia. */
+  suggested: number | null;
+};
+
+/** Cómo van unos abonos: los que tocaban y no se han hecho, el próximo, lo abonado y lo que falta. */
+export function abonoState(r: Recurring, transactions: Transaction[], today: DateKey): AbonoState {
+  const paid = paidTo(r, transactions).amount;
+  const owed = r.total != null ? Math.max(0, roundMoney(r.total - paid)) : null;
+  const suggested = r.amount > 0 ? (owed != null ? Math.min(r.amount, owed) : r.amount) : null;
+  return { overdue: dueDates(r, today), next: nextOccurrence(r, today), paid, owed, suggested };
 }
 
 export function describeFrequency(r: Pick<Recurring, 'frequency' | 'day'>): string {
@@ -742,11 +960,17 @@ export function describeWhen(date: DateKey, today: DateKey): string {
   return `el ${formatShortDate(date, today)}`;
 }
 
-/** Los fijos en el orden en que tocan (a igual fecha, por nombre). */
+/** Los fijos que aún tienen cobros, en el orden en que tocan (a igual fecha, por nombre). */
 export function byNextCharge(recurring: Recurring[], today: DateKey): { recurring: Recurring; date: DateKey }[] {
   return recurring
     .map((r) => ({ recurring: r, date: nextOccurrence(r, today) }))
+    .filter((x): x is { recurring: Recurring; date: DateKey } => x.date != null)
     .sort((a, b) => a.date.localeCompare(b.date) || a.recurring.name.localeCompare(b.recurring.name));
+}
+
+/** El importe del cobro de un fijo en `date` (el último de un plan puede ajustar centavos). */
+export function chargeOn(r: Recurring, date: DateKey): number {
+  return r.count ? paymentAmount(r, planDates(r).indexOf(date)) : r.amount;
 }
 
 export type FixedSummary = {
@@ -762,18 +986,31 @@ export type FixedSummary = {
   subscriptions: number;
 };
 
-/** Cuánto se llevan los gastos fijos este mes, y al mes y al año en general. */
-export function fixedSummary(recurring: Recurring[], today: DateKey): FixedSummary {
-  const expenses = recurring.filter((r) => r.kind === 'expense');
-  const days = rangeDays(periodRange('month', 0, today));
+/**
+ * Cuánto se llevan los gastos fijos este mes, y al mes y al año en general. Los abonos cuentan lo
+ * abonado este mes y, lo que falta, por lo sugerido.
+ */
+export function fixedSummary(recurring: Recurring[], today: DateKey, transactions: Transaction[] = []): FixedSummary {
+  const all = recurring.filter((r) => r.kind === 'expense');
+  // Los que ya terminaron no cuentan para lo de cada mes.
+  const expenses = all.filter((r) => !isEnded(r, today));
+  const range = periodRange('month', 0, today);
+  const days = rangeDays(range);
   let paid = 0;
   let pending = 0;
-  for (const r of expenses) {
+  for (const r of all.filter((x) => x.variable)) {
+    for (const t of transactions) if (t.recurringId === r.id && inRange(t.date, range) && t.date <= today) paid += t.amount;
+    const state = abonoState(r, transactions, today);
+    const toCome = [...state.overdue, ...days.filter((d) => d > today && d <= (lastChargeDate(r) ?? d) && d >= r.startDate && occursOn(r, fromKey(d)))];
+    pending += Math.min((state.suggested ?? 0) * toCome.length, state.owed ?? Infinity);
+  }
+  for (const r of all.filter((x) => !x.variable)) {
+    const lastCharge = lastChargeDate(r);
     // Solo desde que existe: un fijo creado el 10 para el día 1 empieza a contar el mes que viene.
     for (const day of days) {
-      if (day < r.startDate || !occursOn(r, fromKey(day))) continue;
-      if (day <= today) paid += r.amount;
-      else pending += r.amount;
+      if (day < r.startDate || (lastCharge && day > lastCharge) || !occursOn(r, fromKey(day))) continue;
+      if (day <= today) paid += chargeOn(r, day);
+      else pending += chargeOn(r, day);
     }
   }
   const sum = (list: Recurring[], f: (r: Recurring) => number) => roundMoney(list.reduce((s, r) => s + f(r), 0));
@@ -782,8 +1019,210 @@ export function fixedSummary(recurring: Recurring[], today: DateKey): FixedSumma
     paid: roundMoney(paid),
     pending: roundMoney(pending),
     perMonth: sum(expenses, monthlyEquivalent),
-    perYear: sum(expenses, yearlyEquivalent),
+    // Un plan que termina antes (o una deuda por abonos) cuenta solo lo que le falta.
+    perYear: sum(expenses, (r) => Math.min(
+      yearlyEquivalent(r),
+      planProgress(r, today)?.owed ?? (r.variable ? abonoState(r, transactions, today).owed : null) ?? Infinity,
+    )),
     subscriptions: sum(expenses.filter((r) => r.categoryId === SUBSCRIPTIONS_CATEGORY), monthlyEquivalent),
+  };
+}
+
+// ---------- Lo que viene ----------
+
+export type MonthCommitment = {
+  /** "2026-11" */
+  key: string;
+  /** "nov" */
+  label: string;
+  /** Fijos sin fin (renta, Netflix…) y deudas (mensualidades, compras a meses, abonos). */
+  fixed: number;
+  debts: number;
+};
+
+export type Outlook = {
+  /** Último día del mes en curso. */
+  monthEnd: DateKey;
+  /** Balance del mes hasta hoy (con el dinero que ya llegó). */
+  balance: number;
+  /** Lo que aún entra este mes: ingresos fijos y jornadas por cobrar que llegan antes de que acabe. */
+  incoming: number;
+  /** Lo que aún sale este mes: fijos, mensualidades y abonos (los atrasados también). */
+  outgoing: number;
+  /** Lo que se suele gastar al día fuera de los fijos, y los días que faltan del mes. */
+  dailySpend: number;
+  daysLeft: number;
+  /** Cómo cierra el mes si todo sigue igual. */
+  projected: number;
+  /** Lo que se debe (planes, compras a meses y abonos con total) y cuándo termina lo que tiene fecha. */
+  debt: number;
+  debtEnds: DateKey | null;
+  /** Lo que piden los fijos y las deudas este mes y los 5 siguientes. */
+  months: MonthCommitment[];
+  /** Lo que entra al mes en promedio (los últimos 3 meses completos con ingresos), o null si aún no hay. */
+  avgIncome: number | null;
+  /** Lo que se llevan cada mes los fijos y las deudas que siguen activos. */
+  committed: number;
+};
+
+/** Las fechas de cobro de un fijo entre unos días (en abonos, solo las que aún no se abonan). */
+function chargeDates(r: Recurring, days: DateKey[]): DateKey[] {
+  const lastCharge = lastChargeDate(r);
+  return days.filter((d) => d >= r.startDate && (!lastCharge || d <= lastCharge) && (!r.variable || d > (r.lastApplied ?? ''))
+    && occursOn(r, fromKey(d)));
+}
+
+/** Lo que piden unos cobros: el importe de cada uno, o en abonos lo sugerido (sin pasar de `cap`). */
+function chargesIn(r: Recurring, dates: DateKey[], suggested: number | null, cap: number | null): number {
+  if (!r.variable) return dates.reduce((s, d) => s + chargeOn(r, d), 0);
+  return Math.min((suggested ?? 0) * dates.length, cap ?? Infinity);
+}
+
+/**
+ * El panorama del mes y de los que vienen: cómo cierra el mes si todo sigue igual (lo que ya hay, lo
+ * que falta por entrar y salir, y lo que se gasta al día), lo que se debe y cuánto piden los fijos y
+ * las deudas los próximos meses. `cash` son los movimientos como dinero que llega (ver cashFlow).
+ */
+export function outlook(input: {
+  cash: Transaction[];
+  transactions: Transaction[];
+  recurring: Recurring[];
+  goals: SavingsGoal[];
+  pending: PendingShift[];
+  today: DateKey;
+}): Outlook {
+  const { cash, transactions, recurring, goals, pending, today } = input;
+  const month = periodRange('month', 0, today);
+  const rest = rangeDays({ start: toKey(addDays(fromKey(today), 1)), end: month.end }).filter((d) => d <= month.end);
+  const active = recurring.filter((r) => !isEnded(r, today));
+  const expenses = active.filter((r) => r.kind === 'expense');
+
+  const abonos = new Map(active.filter((r) => r.variable).map((r) => [r.id, abonoState(r, transactions, today)]));
+  const incoming = active
+    .filter((r) => r.kind === 'income' && !r.variable)
+    .reduce((s, r) => s + chargesIn(r, chargeDates(r, rest), null, null), 0)
+    + pending.filter((p) => p.date <= month.end).reduce((s, p) => s + p.amount, 0);
+  // Los abonos atrasados también se deben este mes.
+  const outgoing = expenses.reduce((s, r) => {
+    const state = abonos.get(r.id);
+    const dates = [...(state?.overdue ?? []), ...chargeDates(r, rest)];
+    return s + chargesIn(r, dates, state?.suggested ?? null, state?.owed ?? null);
+  }, 0);
+
+  // Gasto del día a día: lo que no es fijo, en los últimos 30 días (o desde que se empezó a apuntar).
+  const since = toKey(addDays(fromKey(today), -29));
+  const daily = transactions.filter((t) => t.kind === 'expense' && !t.recurringId && t.date >= since && t.date <= today);
+  const first = transactions.reduce<DateKey | null>((min, t) => (min == null || t.date < min ? t.date : min), null);
+  const span = first ? Math.min(30, Math.max(7, daysBetween(fromKey(first), fromKey(today)) + 1)) : 30;
+  const dailySpend = roundMoney(daily.reduce((s, t) => s + t.amount, 0) / span);
+
+  const balance = periodTotals(cash, goals, month).balance;
+  const projected = roundMoney(balance + incoming - outgoing - dailySpend * rest.length);
+
+  const debtOf = (r: Recurring) => planProgress(r, today)?.owed ?? abonos.get(r.id)?.owed ?? 0;
+  const isDebt = (r: Recurring) => r.count != null || r.creditId != null || (r.variable === true && r.total != null);
+  const debts = expenses.filter(isDebt);
+  const debtEnds = debts.reduce<DateKey | null>((max, r) => {
+    const last = planProgress(r, today)?.lastDate ?? null;
+    return last && (max == null || last > max) ? last : max;
+  }, null);
+
+  // Mes a mes; lo que se debe por abonos se va acabando (no se cuenta dos veces).
+  const t = fromKey(today);
+  const left = new Map([...abonos].map(([id, state]) => [id, state.owed]));
+  const months = Array.from({ length: 6 }, (_, i): MonthCommitment => {
+    const start = new Date(t.getFullYear(), t.getMonth() + i, 1);
+    const days = rangeDays({ start: toKey(start), end: toKey(new Date(start.getFullYear(), start.getMonth() + 1, 0)) });
+    const sum = (list: Recurring[]) => roundMoney(list.reduce((s, r) => {
+      const cap = left.get(r.id) ?? null;
+      const amount = chargesIn(r, chargeDates(r, days), abonos.get(r.id)?.suggested ?? null, cap);
+      if (cap != null) left.set(r.id, roundMoney(cap - amount));
+      return s + amount;
+    }, 0));
+    return {
+      key: toKey(start).slice(0, 7),
+      label: start.toLocaleDateString('es-ES', { month: 'short' }).replace('.', ''),
+      fixed: sum(expenses.filter((r) => !isDebt(r))),
+      debts: sum(debts),
+    };
+  });
+
+  // Lo que entra al mes: el promedio de los últimos 3 meses completos que tuvieron ingresos.
+  const incomes = [1, 2, 3]
+    .map((back) => periodTotals(cash, [], periodRange('month', -back, today)).income)
+    .filter((n) => n > 0);
+
+  return {
+    monthEnd: month.end,
+    balance,
+    incoming: roundMoney(incoming),
+    outgoing: roundMoney(outgoing),
+    dailySpend,
+    daysLeft: rest.length,
+    projected,
+    debt: roundMoney(debts.reduce((s, r) => s + debtOf(r), 0)),
+    debtEnds,
+    months,
+    avgIncome: incomes.length ? roundMoney(incomes.reduce((s, n) => s + n, 0) / incomes.length) : null,
+    committed: fixedSummary(recurring, today, transactions).perMonth,
+  };
+}
+
+// ---------- Créditos ----------
+
+/** Una tarjeta o un crédito de tienda: sus compras a meses se pagan el mismo día de cada mes. */
+export type Credit = { id: string; name: string; day: number; createdAt: string };
+
+export const MAX_CREDIT_NAME_LENGTH = 30;
+
+/**
+ * Las próximas fechas de pago de un crédito (desde mañana: lo que se compra hoy no se paga hoy),
+ * para elegir el primer pago de una compra.
+ */
+export function creditDueDates(day: number, today: DateKey, count = 2): DateKey[] {
+  const r = { frequency: 'monthly' as const, day, startDate: today };
+  const dates: DateKey[] = [];
+  for (let d = addDays(fromKey(today), 1); dates.length < count; d = addDays(d, 1)) if (occursOn(r, d)) dates.push(toKey(d));
+  return dates;
+}
+
+/** El primer pago de una compra en la que ya se llevan `paid` pagos: tantos meses antes del próximo. */
+export function startForPaid(day: number, today: DateKey, paid: number): DateKey {
+  const next = fromKey(creditDueDates(day, today, 1)[0]);
+  const month = new Date(next.getFullYear(), next.getMonth() - paid, 1);
+  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  return toKey(new Date(month.getFullYear(), month.getMonth(), Math.min(day, last)));
+}
+
+export type CreditSummary = {
+  /** El próximo pago y cuánto es (la suma de las compras que tocan ese día). */
+  next: DateKey | null;
+  nextAmount: number;
+  /** Lo que falta por pagar de todas sus compras. */
+  owed: number;
+  /** Cuándo se termina de pagar todo. */
+  lastDate: DateKey | null;
+  /** Compras que aún se pagan, y las ya liquidadas. */
+  active: Recurring[];
+  finished: Recurring[];
+};
+
+export function creditSummary(creditId: string, recurring: Recurring[], today: DateKey): CreditSummary {
+  const purchases = recurring.filter((r) => r.creditId === creditId);
+  const progress = new Map(purchases.map((r) => [r.id, planProgress(r, today)]));
+  const active = purchases.filter((r) => !progress.get(r.id)?.finished);
+  const nexts = active.map((r) => ({ r, date: nextOccurrence(r, today) })).filter((x) => x.date != null);
+  const next = nexts.reduce<DateKey | null>((min, x) => (min == null || x.date! < min ? x.date! : min), null);
+  return {
+    next,
+    nextAmount: roundMoney(nexts.filter((x) => x.date === next).reduce((s, x) => s + chargeOn(x.r, x.date!), 0)),
+    owed: roundMoney(active.reduce((s, r) => s + (progress.get(r.id)?.owed ?? 0), 0)),
+    lastDate: active.reduce<DateKey | null>((max, r) => {
+      const last = progress.get(r.id)?.lastDate ?? null;
+      return last && (max == null || last > max) ? last : max;
+    }, null),
+    active,
+    finished: purchases.filter((r) => progress.get(r.id)?.finished),
   };
 }
 

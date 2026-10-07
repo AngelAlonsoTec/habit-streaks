@@ -69,6 +69,7 @@ describe('movimientos', () => {
     expect(t.shift).toEqual({
       platforms: [{ platform: 'DiDi', amount: 600, trips: 8 }, { platform: 'Uber', amount: 1200.5, trips: null }],
       hours: 24,
+      paidOn: null,
     });
     // El importe es la suma de las plataformas, no lo que venga escrito aparte.
     expect(t.amount).toBe(1800.5);
@@ -238,4 +239,121 @@ it('borrar Finanzas vuelve a la presentación', () => {
   expense();
   store().resetFinance();
   expect(store()).toMatchObject({ profiles: [], transactions: [], budgets: {}, goals: [], recurring: [] });
+});
+
+describe('fijos con plazo y créditos', () => {
+  const loan = { kind: 'expense' as const, name: 'Préstamo', amount: 1250, categoryId: 'otros-gastos', frequency: 'monthly' as const, day: 15, count: 4 };
+
+  it('una deuda que ya se venía pagando: lo de antes no se apunta y termina en su último pago', () => {
+    store().addRecurring(loan, '2026-10-06', '2026-09-15');
+    expect(store().recurring[0]).toMatchObject({ startDate: '2026-09-15', lastApplied: '2026-10-05', count: 4 });
+    store().applyRecurring('2027-03-01');
+    expect(store().transactions.map((t) => t.date)).toEqual(['2026-10-15', '2026-11-15', '2026-12-15']);
+  });
+
+  it('una compra a meses con total: el último pago ajusta los centavos', () => {
+    const credit = store().addCredit('Coppel', 15)!;
+    store().addRecurring({ ...loan, name: 'Tele', amount: 333.33, total: 1000, count: 3, creditId: credit }, '2026-10-06', '2026-10-15');
+    store().applyRecurring('2027-01-31');
+    expect(store().transactions.map((t) => t.amount)).toEqual([333.33, 333.33, 333.34]);
+  });
+
+  it('liquidar: se apunta hoy lo que falta y no se cobra nada más', () => {
+    store().addRecurring(loan, '2026-10-06', '2026-10-15');
+    store().applyRecurring('2026-10-20');
+    store().settleRecurring(store().recurring[0].id, '2026-10-20');
+    expect(store().transactions.map((t) => [t.date, t.amount, t.note])).toEqual([
+      ['2026-10-15', 1250, 'Préstamo'],
+      ['2026-10-20', 3750, 'Préstamo (liquidación)'],
+    ]);
+    expect(store().applyRecurring('2027-03-01')).toBe(0);
+  });
+
+  it('cambiar el día de pago de un crédito mueve sus compras; borrarlo deja lo ya pagado', () => {
+    const credit = store().addCredit('  Nu  ', 10)!;
+    expect(store().credits[0]).toMatchObject({ name: 'Nu', day: 10 });
+    expect(store().addCredit(' ', 10)).toBeNull();
+    store().addRecurring({ ...loan, name: 'Audífonos', day: 10, count: 3, creditId: credit }, '2026-10-06', '2026-10-10');
+    store().updateCredit(credit, { day: 20 });
+    expect(store().recurring[0].day).toBe(20);
+    store().applyRecurring('2026-10-25');
+    store().deleteCredit(credit);
+    expect(store().credits).toEqual([]);
+    expect(store().recurring).toEqual([]);
+    expect(store().transactions.map((t) => t.date)).toEqual(['2026-10-20']);
+  });
+});
+
+describe('cuándo pagan las apps', () => {
+  it('Uber paga los lunes de entrada; se puede cambiar o dejar al momento', () => {
+    expect(store().payouts).toEqual({ Uber: 0 });
+    store().setPayout('DiDi', 1);
+    store().setPayout('Uber', null);
+    expect(store().payouts).toEqual({ DiDi: 1 });
+  });
+
+  it('una jornada se marca como cobrada, nunca antes de su día', () => {
+    store().setProfiles(['driver']);
+    const id = store().addTransaction({
+      kind: 'income', amount: 1200, categoryId: 'viajes', date: '2026-10-10', note: '', fuel: null,
+      shift: { hours: 8, platforms: [{ platform: 'Uber', amount: 1200, trips: 14 }] },
+    })!;
+    store().markShiftPaid(id, '2026-10-09');
+    expect(store().transactions[0].shift?.paidOn).toBe('2026-10-10');
+    store().markShiftPaid(id, null);
+    expect(store().transactions[0].shift?.paidOn).toBeNull();
+  });
+
+  it('con datos de antes, Uber pasa a pagar los lunes y no hay créditos', () => {
+    expect(migrateFinance({ profiles: ['driver'] }, 3)).toMatchObject({ payouts: { Uber: 0 }, credits: [] });
+  });
+});
+
+describe('abonos y dejar de pagar', () => {
+  const loan = {
+    kind: 'expense' as const, name: 'Préstamo', amount: 500, total: 3000, variable: true, categoryId: 'otros-gastos',
+    frequency: 'biweekly' as const, day: 0,
+  };
+
+  it('los abonos no se apuntan solos; cada abono cubre la fecha que tocaba (o la próxima, si se adelanta)', () => {
+    store().addRecurring(loan, '2026-10-15', '2026-10-15');
+    expect(store().applyRecurring('2026-10-20')).toBe(0);
+    const id = store().recurring[0].id;
+    store().addAbono(id, 800, '2026-10-16'); // la del 15
+    expect(store().recurring[0].lastApplied).toBe('2026-10-15');
+    store().addAbono(id, 300, '2026-10-20'); // por adelantado: la del 31
+    expect(store().recurring[0].lastApplied).toBe('2026-10-31');
+    store().addAbono(id, 100, '2026-10-21'); // un extra: no se salta la quincena siguiente
+    expect(store().recurring[0].lastApplied).toBe('2026-10-31');
+    expect(store().transactions.map((t) => [t.amount, t.note, t.recurringId === id])).toEqual([
+      [800, 'Préstamo', true], [300, 'Préstamo', true], [100, 'Préstamo', true],
+    ]);
+  });
+
+  it('al abonar lo que falta, queda liquidado', () => {
+    store().addRecurring(loan, '2026-10-15', '2026-10-15');
+    store().addAbono(store().recurring[0].id, 3000, '2026-10-15');
+    expect(store().recurring[0]).toMatchObject({ endedOn: '2026-10-15', endKind: 'settled' });
+  });
+
+  it('"esta vez no abono" pasa la fecha sin apuntar nada', () => {
+    store().addRecurring(loan, '2026-10-15', '2026-10-15');
+    store().skipAbono(store().recurring[0].id, '2026-10-20');
+    expect(store().recurring[0].lastApplied).toBe('2026-10-15');
+    expect(store().transactions).toEqual([]);
+  });
+
+  it('dejar de pagar Claude: lo pagado se queda, lo que se apuntó solo después se quita, y se puede retomar', () => {
+    store().addRecurring({ kind: 'expense', name: 'Claude', amount: 400, categoryId: 'suscripciones', frequency: 'monthly', day: 6 }, '2026-07-06');
+    store().applyRecurring('2026-10-06');
+    const id = store().recurring[0].id;
+    store().endRecurring(id, '2026-08-06'); // lo canceló en agosto y la app lo siguió apuntando
+    expect(store().transactions.map((t) => t.date)).toEqual(['2026-07-06', '2026-08-06']);
+    expect(store().recurring[0]).toMatchObject({ endedOn: '2026-08-06', endKind: 'cancelled' });
+    expect(store().applyRecurring('2026-12-31')).toBe(0);
+    // Lo retoma en enero: desde ese día, sin apuntar lo de mientras.
+    store().resumeRecurring(id, '2027-01-06');
+    store().applyRecurring('2027-01-06');
+    expect(store().transactions.map((t) => t.date)).toEqual(['2026-07-06', '2026-08-06', '2027-01-06']);
+  });
 });

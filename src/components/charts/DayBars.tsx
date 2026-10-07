@@ -1,13 +1,16 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AxisLabels } from '@/components/charts/AxisLabels';
+import { SelectedBand } from '@/components/charts/SelectedBand';
 import { niceCeil } from '@/components/charts/scale';
 import { useTheme } from '@/theme';
 
 export type DayFlow = {
   key: string;
-  /** Etiqueta bajo la columna ("L", "15"); vacía para no rotular. */
+  /** Etiqueta bajo la columna ("L", "15"). */
   label: string;
+  /** La etiqueta solo se ve al elegir la columna (en el mes se rotulan 1, 5, 10…). */
+  hideLabel?: boolean;
   /** Para el lector de pantalla: "Martes 6". */
   name: string;
   income: number;
@@ -62,6 +65,7 @@ export function DayBars({ days, incomeColor, expenseColor, selected, onSelect, f
                 accessibilityLabel={`${d.name}: ingresos ${format(d.income)}, gastos ${format(d.expense)}`}
                 style={[styles.column, { opacity: dimmed ? 0.35 : 1 }]}
               >
+                {selected === d.key && <SelectedBand gap={dense ? 2 : 8} />}
                 <View style={[styles.half, styles.up, { height: top }]}>
                   {d.income > 0 && (
                     <View
@@ -90,7 +94,7 @@ export function DayBars({ days, incomeColor, expenseColor, selected, onSelect, f
         </View>
       </View>
       <AxisLabels
-        labels={days.map((d) => ({ key: d.key, text: d.label, selected: selected === d.key }))}
+        labels={days.map((d) => ({ key: d.key, text: d.label, selected: selected === d.key, hidden: d.hideLabel }))}
         gutter={44}
         gap={dense ? 2 : 8}
       />

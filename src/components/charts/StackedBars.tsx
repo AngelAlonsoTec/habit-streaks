@@ -1,12 +1,20 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AxisLabels } from '@/components/charts/AxisLabels';
+import { SelectedBand } from '@/components/charts/SelectedBand';
 import { niceCeil } from '@/components/charts/scale';
 import { useTheme } from '@/theme';
 
 /** `amount` y no `value`: un estilo con `x.value` lo toma por un valor animado al compilar. */
 export type StackPart = { key: string; amount: number; color: string };
-export type StackedDay = { key: string; label: string; name: string; parts: StackPart[] };
+export type StackedDay = {
+  key: string;
+  label: string;
+  /** La etiqueta solo se ve al elegir la columna (en el mes se rotulan 1, 5, 10…). */
+  hideLabel?: boolean;
+  name: string;
+  parts: StackPart[];
+};
 
 type Props = {
   days: StackedDay[];
@@ -43,6 +51,7 @@ export function StackedBars({ days, selected, onSelect, format, formatTick = for
                 accessibilityLabel={`${d.name}: ${totals[i] ? parts.map((p) => `${p.key} ${format(p.amount)}`).join(', ') : 'sin jornada'}`}
                 style={[styles.column, { opacity: dimmed ? 0.35 : 1 }]}
               >
+                {selected === d.key && <SelectedBand gap={dense ? 2 : 8} />}
                 {max > 0 && totals[i] > 0 && (
                   <View style={[styles.stack, { height: Math.max(2, (totals[i] / max) * (height - 1)) }]}>
                     {/* De arriba abajo: la primera app queda en la base. */}
@@ -64,7 +73,7 @@ export function StackedBars({ days, selected, onSelect, format, formatTick = for
         </View>
       </View>
       <AxisLabels
-        labels={days.map((d) => ({ key: d.key, text: d.label, selected: selected === d.key }))}
+        labels={days.map((d) => ({ key: d.key, text: d.label, selected: selected === d.key, hidden: d.hideLabel }))}
         gutter={44}
         gap={dense ? 2 : 8}
       />

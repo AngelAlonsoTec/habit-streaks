@@ -5,12 +5,13 @@ import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, V
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DatePicker } from '@/components/DatePicker';
+import { CategoryPicker } from '@/components/finance/CategoryPicker';
 import { AmountInput, NumberField, PrimaryButton, TextButton } from '@/components/finance/ui';
 import { Chip, SectionTitle, Segmented } from '@/components/ui';
 import { addDays, DateKey, fromKey, toKey } from '@/lib/dates';
 import {
-  budgetLevel, FUEL_CATEGORY, lastOdometer, MAX_CATEGORY_LENGTH, MAX_NOTE_LENGTH, MAX_PLATFORM_LENGTH, monthSpent,
-  parseHours, parseQuantity, SHIFT_CATEGORY, sortByUse, Transaction, TransactionInput, TxKind,
+  budgetLevel, FUEL_CATEGORY, lastOdometer, MAX_NOTE_LENGTH, MAX_PLATFORM_LENGTH, monthSpent,
+  parseHours, parseQuantity, payoutDate, SHIFT_CATEGORY, sortByUse, Transaction, TransactionInput, TxKind, weekdayDate,
 } from '@/lib/finance';
 import { formatMoney, formatNumber, moneyInputText, parseMoney } from '@/lib/money';
 import { confirmAction, goBack } from '@/lib/platform';
@@ -54,6 +55,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   const currency = useFinance((s) => s.currency);
   const categories = useFinance((s) => s.categories);
   const platforms = useFinance((s) => s.platforms);
+  const payouts = useFinance((s) => s.payouts);
   const transactions = useFinance((s) => s.transactions);
   const budgets = useFinance((s) => s.budgets);
   const addTransaction = useFinance((s) => s.addTransaction);
@@ -80,7 +82,6 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
   const [litersText, setLitersText] = useState(toText(existing?.fuel?.liters));
   const [odometerText, setOdometerText] = useState(toText(existing?.fuel?.odometer));
   const [fullTank, setFullTank] = useState(existing?.fuel?.fullTank ?? true);
-  const [newCategory, setNewCategory] = useState<string | null>(null);
   const [newPlatform, setNewPlatform] = useState<string | null>(null);
 
   // Las más usadas primero: el gasto de todos los días está a un toque.
@@ -148,6 +149,10 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
 
   const totalTrips = earnings.reduce((s, e) => s + (e.trips ?? 0), 0);
   const tripsIncome = earnings.reduce((s, e) => s + (e.trips && e.amount ? e.amount : 0), 0);
+  // Las apps que pagan por semana: cuándo llega lo de esta jornada.
+  const laterPay = isShift && !existing?.shift?.paidOn
+    ? rows.map((r) => ({ platform: r.platform, date: payoutDate(date, payouts[r.platform]) })).filter((p) => p.date > today)
+    : [];
   const shiftHint = isShift && amount != null
     ? [
         hours != null ? `${formatMoney(amount / hours, currency)} por hora` : null,
@@ -168,10 +173,9 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
     }
   };
 
-  const createCategory = () => {
-    const id = newCategory ? addCategory(newCategory, kind) : null;
+  const createCategory = (name: string) => {
+    const id = addCategory(name, kind);
     if (id) selectCategory(id);
-    setNewCategory(null);
   };
 
   const togglePlatform = (platform: string) =>
@@ -197,7 +201,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
       date,
       note,
       shift: isShift
-        ? { platforms: earnings.map((e) => ({ platform: e.platform, amount: e.amount!, trips: e.trips })), hours }
+        ? { platforms: earnings.map((e) => ({ platform: e.platform, amount: e.amount!, trips: e.trips })), hours, paidOn: existing?.shift?.paidOn ?? null }
         : null,
       fuel: isFuel ? { liters, odometer, fullTank } : null,
     };
@@ -254,28 +258,7 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
         {!mode && (
           <>
             <SectionTitle>Categoría</SectionTitle>
-            <View style={styles.wrap}>
-              {kindCategories.map((c) => (
-                <Chip key={c.id} label={c.name} icon={c.icon} color={chartColor(c.color, theme)} selected={categoryId === c.id} onPress={() => selectCategory(c.id)} />
-              ))}
-              {newCategory == null && <Chip label="Nueva" icon="add" onPress={() => setNewCategory('')} />}
-            </View>
-            {newCategory != null && (
-              <View style={styles.inlineRow}>
-                <TextInput
-                  value={newCategory}
-                  onChangeText={setNewCategory}
-                  placeholder="Nombre de la categoría"
-                  placeholderTextColor={theme.muted}
-                  maxLength={MAX_CATEGORY_LENGTH}
-                  autoFocus
-                  returnKeyType="done"
-                  onSubmitEditing={createCategory}
-                  style={[styles.input, styles.flex, { color: theme.text, backgroundColor: theme.surface }]}
-                />
-                <TextButton label="Añadir" onPress={createCategory} />
-              </View>
-            )}
+            <CategoryPicker categories={kindCategories} value={categoryId} onChange={selectCategory} onCreate={createCategory} />
           </>
         )}
 
@@ -353,6 +336,12 @@ function EntryForm({ existing, initialKind, mode }: { existing?: Transaction; in
                 : 'Desde que te conectaste hasta que acabaste.'}
             </Text>
             {shiftHint ? <Text style={[styles.hint, { color: theme.text }]}>{shiftHint}</Text> : null}
+            {laterPay.length > 0 && (
+              <Text style={[styles.hint, { color: theme.muted }]}>
+                {laterPay.map((p) => `${p.platform} te lo paga el ${weekdayDate(p.date)}`).join('; ')}: hasta entonces se ve aparte del
+                balance, como «por cobrar».
+              </Text>
+            )}
           </>
         )}
 

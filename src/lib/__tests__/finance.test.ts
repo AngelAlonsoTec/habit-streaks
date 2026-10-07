@@ -1,5 +1,6 @@
 import {
-  budgetLevel, byNextCharge, categoriesFor, formatHours, parseHours, parseQuantity, sortByUse, describeFrequency, describeFrequencyShort,
+  abonoState, budgetLevel, byNextCharge, cashFlow, isEnded, outlook, categoriesFor, creditDueDates, creditSummary, paymentAmount, payoutDate, pendingShifts, planDates,
+  planProgress, startForPaid, formatHours, parseHours, parseQuantity, sortByUse, describeFrequency, describeFrequencyShort,
   describePeriod, describeWhen, driverStats, dueDates, fixedSummary, fuelEfficiency, fuelStats, isCustomCategory, knownService, lastOdometer,
   mergeCategories, monthlyEquivalent, monthSpent, nextOccurrence, occursOn, periodRange, periodTotals, Recurring, SavingsGoal, savingsPace,
   totalsByCategory, withCatalogCategory, yearlyEquivalent,
@@ -403,5 +404,152 @@ describe('gastos fijos y suscripciones', () => {
     expect(ids.indexOf('suscripciones')).toBe(ids.indexOf('otros-gastos') - 1);
     expect(withCatalogCategory(after, 'suscripciones')).toBe(after);
     expect(withCatalogCategory(before, 'custom-x')).toBe(before);
+  });
+});
+
+describe('jornadas: el dinero cuenta cuando llega', () => {
+  const payouts = { Uber: 0 };
+  // Sábado 10 de octubre: Uber (paga el lunes) e inDrive (en efectivo).
+  const saturday = makeTx({
+    id: 's', kind: 'income', categoryId: 'viajes', date: '2026-10-10', amount: 1600,
+    shift: { hours: 8, platforms: [{ platform: 'Uber', amount: 1200, trips: 14 }, { platform: 'inDrive', amount: 400, trips: 5 }] },
+  });
+  const cash = (today: string, t = saturday) =>
+    cashFlow([t], payouts, today).map((x) => [x.date, x.amount]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+
+  it('Uber paga el lunes siguiente a la jornada; lo demás, al momento', () => {
+    expect(payoutDate('2026-10-10', 0)).toBe('2026-10-12');
+    expect(payoutDate('2026-10-12', 0)).toBe('2026-10-19'); // la del lunes, al lunes siguiente
+    expect(payoutDate('2026-10-10', undefined)).toBe('2026-10-10');
+  });
+
+  it('hasta el lunes, lo de Uber va por cobrar y no cuenta en el balance', () => {
+    expect(cash('2026-10-11')).toEqual([['2026-10-10', 400]]);
+    expect(pendingShifts([saturday], payouts, '2026-10-11')).toEqual([
+      expect.objectContaining({ amount: 1200, date: '2026-10-12', platforms: ['Uber'] }),
+    ]);
+    // El lunes llega y cuenta ese día.
+    expect(cash('2026-10-12')).toEqual([['2026-10-10', 400], ['2026-10-12', 1200]]);
+    expect(pendingShifts([saturday], payouts, '2026-10-12')).toEqual([]);
+  });
+
+  it('si se lo pagaron antes, cuenta desde ese día', () => {
+    const paid = { ...saturday, shift: { ...saturday.shift!, paidOn: '2026-10-11' } };
+    expect(cash('2026-10-11', paid)).toEqual([['2026-10-10', 400], ['2026-10-11', 1200]]);
+    expect(pendingShifts([paid], payouts, '2026-10-11')).toEqual([]);
+  });
+});
+
+describe('fijos con número de pagos', () => {
+  const loan = recurring({ name: 'Préstamo', amount: 1250, day: 15, count: 4, startDate: '2026-09-15' });
+
+  it('cuatro meses: sus fechas, cuántos van, cuánto falta y cuándo termina', () => {
+    expect(planDates(loan)).toEqual(['2026-09-15', '2026-10-15', '2026-11-15', '2026-12-15']);
+    expect(planProgress(loan, '2026-10-06')).toEqual({ count: 4, paid: 1, remaining: 3, owed: 3750, lastDate: '2026-12-15', finished: false });
+    expect(nextOccurrence(loan, '2026-11-20')).toBe('2026-12-15');
+    expect(nextOccurrence(loan, '2026-12-15')).toBeNull();
+    expect(dueDates({ ...loan, lastApplied: '2026-09-15' }, '2027-03-01')).toEqual(['2026-10-15', '2026-11-15', '2026-12-15']);
+    expect(planProgress(recurring({}), '2026-10-06')).toBeNull(); // sin fin
+  });
+
+  it('dos quincenas desde una fecha: el 15 y el fin de mes que siguen', () => {
+    expect(planDates({ frequency: 'biweekly', day: 0, startDate: '2026-10-06', count: 2 })).toEqual(['2026-10-15', '2026-10-31']);
+  });
+
+  it('con un total, el último pago ajusta los centavos', () => {
+    const r = recurring({ amount: 333.33, total: 1000, count: 3 });
+    expect([0, 1, 2].map((i) => paymentAmount(r, i))).toEqual([333.33, 333.33, 333.34]);
+  });
+
+  it('liquidado antes de tiempo: ya no toca nada después', () => {
+    const settled = { ...loan, endedOn: '2026-10-20' };
+    expect(planProgress(settled, '2026-10-20')).toMatchObject({ finished: true, owed: 0 });
+    expect(nextOccurrence(settled, '2026-10-20')).toBeNull();
+    expect(dueDates({ ...settled, lastApplied: '2026-10-20' }, '2026-12-31')).toEqual([]);
+    expect(byNextCharge([settled, recurring({ id: 'r2' })], '2026-10-20').map((x) => x.recurring.id)).toEqual(['r2']);
+  });
+});
+
+describe('créditos', () => {
+  const tv = recurring({ id: 'tv', name: 'Tele', amount: 1000, total: 3000, count: 3, day: 15, startDate: '2026-09-15', creditId: 'c1' });
+  const shoes = recurring({ id: 'tenis', name: 'Tenis', amount: 400, total: 2400, count: 6, day: 15, startDate: '2026-10-15', creditId: 'c1' });
+
+  it('el próximo pago suma lo que toca de cada compra, aunque cambie cada mes', () => {
+    expect(creditSummary('c1', [tv, shoes, recurring({ id: 'otro' })], '2026-10-06')).toMatchObject({
+      next: '2026-10-15', nextAmount: 1400, owed: 4400, lastDate: '2027-03-15',
+    });
+    // En noviembre se termina la tele: en diciembre ya solo tocan los tenis.
+    const december = creditSummary('c1', [tv, shoes], '2026-11-20');
+    expect(december).toMatchObject({ next: '2026-12-15', nextAmount: 400 });
+    expect(december.finished.map((r) => r.id)).toEqual(['tv']);
+  });
+
+  it('fechas de pago desde mañana, y una compra que ya se venía pagando', () => {
+    expect(creditDueDates(15, '2026-10-06')).toEqual(['2026-10-15', '2026-11-15']);
+    expect(creditDueDates(6, '2026-10-06')).toEqual(['2026-11-06', '2026-12-06']); // lo de hoy no se paga hoy
+    expect(creditDueDates(31, '2026-11-06')).toEqual(['2026-11-30', '2026-12-31']);
+    expect(startForPaid(15, '2026-10-06', 2)).toBe('2026-08-15'); // pagó agosto y septiembre; sigue octubre
+  });
+});
+
+describe('abonos y dejar de pagar', () => {
+  it('abonos: lo que tocaba y no se abonó, el próximo, lo abonado y lo que falta', () => {
+    const loan = recurring({
+      id: 'tio', name: 'Préstamo', variable: true, amount: 500, total: 3000, frequency: 'biweekly', day: 0,
+      startDate: '2026-09-01', lastApplied: '2026-09-30',
+    });
+    const paid = [makeTx({ amount: 800, date: '2026-09-15', recurringId: 'tio' }), makeTx({ amount: 400, date: '2026-09-30', recurringId: 'tio' })];
+    expect(abonoState(loan, paid, '2026-10-20')).toEqual({ overdue: ['2026-10-15'], next: '2026-10-31', paid: 1200, owed: 1800, suggested: 500 });
+    // Si abonó por adelantado (ya cubrió el 31), el próximo es el 15 de noviembre.
+    expect(nextOccurrence({ ...loan, lastApplied: '2026-10-31' }, '2026-10-20')).toBe('2026-11-15');
+    // Casi pagado: lo sugerido no pasa de lo que falta.
+    expect(abonoState(loan, [...paid, makeTx({ amount: 1700, recurringId: 'tio' })], '2026-10-20').suggested).toBe(100);
+  });
+
+  it('dejar de pagar: después de su último cobro ya no toca nada', () => {
+    const claude = recurring({ name: 'Claude', amount: 400, day: 6, startDate: '2026-06-06', endedOn: '2026-09-06', endKind: 'cancelled' });
+    expect(isEnded(claude, '2026-10-06')).toBe(true);
+    expect(nextOccurrence(claude, '2026-10-06')).toBeNull();
+    // Si el último cobro aún no llega (ya lo pagó este mes), sigue hasta entonces.
+    expect(isEnded({ ...claude, endedOn: '2026-11-06' }, '2026-10-06')).toBe(false);
+    expect(nextOccurrence({ ...claude, endedOn: '2026-11-06' }, '2026-10-06')).toBe('2026-11-06');
+  });
+});
+
+describe('lo que viene', () => {
+  const rent = recurring({ id: 'renta', amount: 4500, day: 1, startDate: '2026-09-01', lastApplied: '2026-10-06' });
+  const salary = recurring({
+    id: 'sueldo', kind: 'income', name: 'Sueldo', amount: 6000, categoryId: 'sueldo', frequency: 'biweekly', day: 0,
+    startDate: '2026-09-01', lastApplied: '2026-10-06',
+  });
+  const netflix = recurring({ id: 'nf', name: 'Netflix', amount: 219, categoryId: 'suscripciones', day: 20, startDate: '2026-09-01', lastApplied: '2026-10-06' });
+  const phone = recurring({ id: 'cel', name: 'Celular', amount: 1000, total: 3000, count: 3, day: 15, startDate: '2026-10-15', creditId: 'c1' });
+  const txs = [makeTx({ amount: 300, date: '2026-10-01' }), makeTx({ amount: 4500, categoryId: 'renta', date: '2026-10-01', recurringId: 'renta' })];
+
+  it('cómo cierra el mes: lo que hay, lo que falta por entrar y salir y el gasto del día a día', () => {
+    const o = outlook({ cash: txs, transactions: txs, recurring: [rent, salary, netflix, phone], goals: [], pending: [], today: '2026-10-06' });
+    // Hoy: −300 de comida y −4500 de renta. Faltan las dos quincenas, Netflix y la mensualidad del celular.
+    // Día a día: 300 en los 7 días desde que empezó a apuntar = 42.86 al día, por 25 días.
+    expect(o).toMatchObject({ balance: -4800, incoming: 12000, outgoing: 1219, dailySpend: 42.86, daysLeft: 25, debt: 3000, debtEnds: '2026-12-15' });
+    expect(o.projected).toBe(4909.5); // −4800 + 12000 − 1219 − 1071.50
+    expect(o.committed).toBe(5719);
+    // Mes a mes: la mensualidad del celular se acaba en diciembre.
+    expect(o.months.slice(0, 4).map((m) => [m.key, m.fixed, m.debts])).toEqual([
+      ['2026-10', 4719, 1000], ['2026-11', 4719, 1000], ['2026-12', 4719, 1000], ['2027-01', 4719, 0],
+    ]);
+  });
+
+  it('lo que se debe por abonos se va acabando mes a mes (no se cuenta de más)', () => {
+    const loan = recurring({ id: 'tio', name: 'Préstamo', variable: true, amount: 1000, total: 2500, day: 15, startDate: '2026-10-15' });
+    const o = outlook({ cash: [], transactions: [], recurring: [loan], goals: [], pending: [], today: '2026-10-06' });
+    expect(o.months.slice(0, 4).map((m) => m.debts)).toEqual([1000, 1000, 500, 0]);
+    expect(o).toMatchObject({ debt: 2500, outgoing: 1000 });
+  });
+
+  it('qué parte de lo que entra se llevan los fijos: el promedio de los meses anteriores', () => {
+    const income = ['2026-07-15', '2026-08-15', '2026-09-15'].map((date, i) => makeTx({ kind: 'income', categoryId: 'sueldo', amount: 9000 + i * 1500, date }));
+    const o = outlook({ cash: income, transactions: income, recurring: [rent], goals: [], pending: [], today: '2026-10-06' });
+    expect(o.avgIncome).toBe(10500);
+    expect(o.committed).toBe(4500);
   });
 });
